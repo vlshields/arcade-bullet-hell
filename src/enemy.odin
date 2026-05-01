@@ -17,15 +17,21 @@ Enemy :: struct {
 }
 
 Enemy_Pool :: struct {
-	enemies:      [ENEMY_COUNT]Enemy,
-	tex:          rl.Texture2D,
-	flash_shader: rl.Shader,
+	enemies:       [ENEMY_COUNT]Enemy,
+	tex:           rl.Texture2D,
+	flash_shader:  rl.Shader,
+	waves_cleared: int,
+	fire_interval: f32,
+	boost_applied: bool,
 }
 
 init_enemies :: proc(pool: ^Enemy_Pool) {
 	pool.tex = rl.LoadTexture("assets/sprites/enemy_grunt_move.png")
 	rl.SetTextureFilter(pool.tex, .POINT)
 	pool.flash_shader = load_flash_shader()
+	pool.waves_cleared = 0
+	pool.fire_interval = ENEMY_FIRE_INTERVAL
+	pool.boost_applied = false
 	spawn_grunt_wave(pool)
 }
 
@@ -35,7 +41,7 @@ spawn_grunt_wave :: proc(pool: ^Enemy_Pool) {
 		e.anchor = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2}
 		e.angle = f32(i) * math.TAU / f32(ENEMY_COUNT)
 		e.radius = ENEMY_SPAWN_RADIUS
-		e.fire_timer = rand.float32() * ENEMY_FIRE_INTERVAL
+		e.fire_timer = rand.float32() * pool.fire_interval
 		e.frame = 0
 		e.frame_time = 0
 		e.hp = ENEMY_MAX_HP
@@ -79,6 +85,11 @@ update_enemies :: proc(pool: ^Enemy_Pool, bullets: ^Bullet_Pool, dt: f32) {
 		}
 	}
 	if !any_alive {
+		pool.waves_cleared += 1
+		if !pool.boost_applied && pool.waves_cleared >= ENEMY_WAVE_BOOST_THRESHOLD {
+			pool.fire_interval /= 1.0 + ENEMY_FIRE_FREQ_BOOST
+			pool.boost_applied = true
+		}
 		spawn_grunt_wave(pool)
 	}
 
@@ -117,8 +128,8 @@ update_enemies :: proc(pool: ^Enemy_Pool, bullets: ^Bullet_Pool, dt: f32) {
 		}
 
 		e.fire_timer += dt
-		if e.fire_timer >= ENEMY_FIRE_INTERVAL {
-			e.fire_timer -= ENEMY_FIRE_INTERVAL
+		if e.fire_timer >= pool.fire_interval {
+			e.fire_timer -= pool.fire_interval
 			center := enemy_center(e)
 			for b in 0 ..< ENEMY_BULLETS_PER_BURST {
 				angle := f32(b) * (math.TAU / f32(ENEMY_BULLETS_PER_BURST))

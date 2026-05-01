@@ -45,7 +45,9 @@ ENEMY_ORBIT_RADIUS :: 120.0 // px (from player center)
 ENEMY_SPAWN_RADIUS :: 500.0 // px (from player center)
 ENEMY_APPROACH_SPEED :: 200.0 // px/s
 ENEMY_ORBIT_SPEED :: 0.8 // rad/s
-ENEMY_FIRE_INTERVAL :: 3.0 // s
+ENEMY_FIRE_INTERVAL :: 3.0 // s (initial; shrinks once after the threshold below)
+ENEMY_WAVE_BOOST_THRESHOLD :: 3 // count (waves cleared before fire-frequency boost applies)
+ENEMY_FIRE_FREQ_BOOST :: 0.5 // fraction (added to fire frequency at threshold; interval becomes interval / (1 + this))
 ENEMY_BULLETS_PER_BURST :: 12 // count
 ENEMY_BULLET_SPEED :: 70.0 // px/s
 ENEMY_MAX_HP :: 21 // hp
