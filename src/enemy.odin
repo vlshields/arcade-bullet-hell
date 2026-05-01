@@ -26,28 +26,36 @@ init_enemies :: proc(pool: ^Enemy_Pool) {
 	pool.tex = rl.LoadTexture("assets/sprites/enemy_grunt_move.png")
 	rl.SetTextureFilter(pool.tex, .POINT)
 	pool.flash_shader = load_flash_shader()
+	spawn_grunt_wave(pool)
+}
+
+spawn_grunt_wave :: proc(pool: ^Enemy_Pool) {
 	for i in 0 ..< ENEMY_COUNT {
 		e := &pool.enemies[i]
 		e.anchor = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2}
 		e.angle = f32(i) * math.TAU / f32(ENEMY_COUNT)
 		e.radius = ENEMY_SPAWN_RADIUS
 		e.fire_timer = rand.float32() * ENEMY_FIRE_INTERVAL
+		e.frame = 0
+		e.frame_time = 0
 		e.hp = ENEMY_MAX_HP
 		e.hit_flash = 0
 		e.active = true
 	}
 }
 
-damage_enemy :: proc(e: ^Enemy, amount: int) {
+damage_enemy :: proc(e: ^Enemy, amount: int) -> (killed: bool) {
 	if !e.active {
-		return
+		return false
 	}
 	e.hp -= amount
 	e.hit_flash = ENEMY_HIT_FLASH_TIME
 	if e.hp <= 0 {
 		e.hp = 0
 		e.active = false
+		return true
 	}
+	return false
 }
 
 unload_enemies :: proc(pool: ^Enemy_Pool) {
@@ -62,18 +70,23 @@ enemy_center :: proc(e: ^Enemy) -> rl.Vector2 {
 	}
 }
 
-update_enemies :: proc(pool: ^Enemy_Pool, player: ^Player, bullets: ^Bullet_Pool, dt: f32) {
-	pcx := player.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
-	pcy := player.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
-	player_center := rl.Vector2{pcx, pcy}
-	follow_k := 1 - math.exp(-ENEMY_ANCHOR_FOLLOW_RATE * dt)
+update_enemies :: proc(pool: ^Enemy_Pool, bullets: ^Bullet_Pool, dt: f32) {
+	any_alive := false
+	for i in 0 ..< ENEMY_COUNT {
+		if pool.enemies[i].active {
+			any_alive = true
+			break
+		}
+	}
+	if !any_alive {
+		spawn_grunt_wave(pool)
+	}
 
 	for i in 0 ..< ENEMY_COUNT {
 		e := &pool.enemies[i]
 		if !e.active {
 			continue
 		}
-		e.anchor += (player_center - e.anchor) * follow_k
 		if e.hit_flash > 0 {
 			e.hit_flash -= dt
 			if e.hit_flash < 0 {

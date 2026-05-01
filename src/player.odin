@@ -16,6 +16,7 @@ Player :: struct {
 	frame_time:       f32,
 	frame:            int,
 	hp:               int,
+	stamina:          f32,
 	invuln_timer:     f32,
 	fire_timer:       f32,
 	dash_timer:       f32,
@@ -52,6 +53,7 @@ init_player :: proc(p: ^Player) {
 	p.frame_time = 0
 	p.frame = 0
 	p.hp = PLAYER_MAX_HP
+	p.stamina = PLAYER_MAX_STAMINA
 	p.invuln_timer = 0
 	p.fire_timer = 0
 	p.dash_timer = 0
@@ -93,9 +95,16 @@ update_player :: proc(p: ^Player, dt: f32) {
 		}
 	}
 
+	if p.stamina < PLAYER_MAX_STAMINA {
+		p.stamina += PLAYER_STAMINA_RECOVER_RATE * dt
+		if p.stamina > PLAYER_MAX_STAMINA {
+			p.stamina = PLAYER_MAX_STAMINA
+		}
+	}
+
 	pcx := p.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
 	pcy := p.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
-	if p.dash_timer <= 0 && p.dash_cooldown <= 0 {
+	if p.dash_timer <= 0 && p.dash_cooldown <= 0 && p.stamina >= PLAYER_DASH_STAMINA_COST {
 		pressed, dir := input_dash({pcx, pcy}, get_mouse_game_pos())
 		if pressed && rl.Vector2Length(dir) > 0.001 {
 			p.dash_timer = PLAYER_DASH_DURATION
@@ -103,6 +112,7 @@ update_player :: proc(p: ^Player, dt: f32) {
 			p.dash_velocity = dir * PLAYER_DASH_SPEED
 			p.dash_trail_count = 0
 			p.dash_trail_fade = PLAYER_DASH_TRAIL_FADE_TIME
+			p.stamina -= PLAYER_DASH_STAMINA_COST
 		}
 	}
 
@@ -254,17 +264,30 @@ draw_dash_trail :: proc(p: ^Player, tex: rl.Texture2D, src: rl.Rectangle) {
 
 draw_player_hud :: proc(p: ^Player) {
 	x: i32 = HP_BAR_MARGIN
-	y: i32 = SCREEN_HEIGHT - HP_BAR_MARGIN - HP_BAR_H
-	rl.DrawRectangle(x, y, HP_BAR_W, HP_BAR_H, rl.Color{40, 40, 40, 255})
+	stam_y: i32 = SCREEN_HEIGHT - HP_BAR_MARGIN - HP_BAR_H
+	hp_y: i32 = stam_y - STATUS_BAR_GAP - HP_BAR_H
+
+	rl.DrawRectangle(x, hp_y, HP_BAR_W, HP_BAR_H, rl.Color{40, 40, 40, 255})
 	hp := p.hp
 	if hp < 0 {
 		hp = 0
 	}
-	fill_w := i32(f32(HP_BAR_W) * f32(hp) / f32(PLAYER_MAX_HP))
-	if fill_w > 0 {
-		rl.DrawRectangle(x, y, fill_w, HP_BAR_H, rl.Color{220, 60, 60, 255})
+	hp_fill_w := i32(f32(HP_BAR_W) * f32(hp) / f32(PLAYER_MAX_HP))
+	if hp_fill_w > 0 {
+		rl.DrawRectangle(x, hp_y, hp_fill_w, HP_BAR_H, rl.Color{220, 60, 60, 255})
 	}
-	rl.DrawRectangleLines(x, y, HP_BAR_W, HP_BAR_H, rl.WHITE)
+	rl.DrawRectangleLines(x, hp_y, HP_BAR_W, HP_BAR_H, rl.WHITE)
+
+	rl.DrawRectangle(x, stam_y, HP_BAR_W, HP_BAR_H, rl.Color{40, 40, 40, 255})
+	stam := p.stamina
+	if stam < 0 {
+		stam = 0
+	}
+	stam_fill_w := i32(f32(HP_BAR_W) * stam / PLAYER_MAX_STAMINA)
+	if stam_fill_w > 0 {
+		rl.DrawRectangle(x, stam_y, stam_fill_w, HP_BAR_H, rl.Color{80, 180, 240, 255})
+	}
+	rl.DrawRectangleLines(x, stam_y, HP_BAR_W, HP_BAR_H, rl.WHITE)
 }
 
 damage_player :: proc(p: ^Player, amount: int) {
@@ -282,6 +305,7 @@ update_player_attack :: proc(
 	p: ^Player,
 	beams: ^Beam_Pool,
 	enemies: ^Enemy_Pool,
+	sneaks: ^Sneak_Pool,
 	particles: ^Particle_Pool,
 	dt: f32,
 ) {
@@ -314,7 +338,29 @@ update_player_attack :: proc(
 		if abs(ec.x - pcx) > ENEMY_HIT_RADIUS {
 			continue
 		}
-		damage_enemy(e, LASER_DAMAGE)
+		killed := damage_enemy(e, LASER_DAMAGE)
 		spawn_impact_particles(particles, ec, rl.RED, LASER_IMPACT_PARTICLES)
+		if killed {
+			try_spawn_sneak(sneaks)
+		}
+	}
+
+	for i in 0 ..< SNEAK_MAX {
+		s := &sneaks.sneaks[i]
+		if !s.active {
+			continue
+		}
+		sc := sneak_center(s)
+		if sc.y > pcy {
+			continue
+		}
+		if abs(sc.x - pcx) > SNEAK_HIT_RADIUS {
+			continue
+		}
+		killed := damage_sneak(s, LASER_DAMAGE)
+		spawn_impact_particles(particles, sc, rl.RED, LASER_IMPACT_PARTICLES)
+		if killed {
+			try_spawn_sneak(sneaks)
+		}
 	}
 }

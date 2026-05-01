@@ -8,6 +8,7 @@ Game_State :: struct {
 	background:    Background,
 	player:        Player,
 	enemies:       Enemy_Pool,
+	sneaks:        Sneak_Pool,
 	bullets:       Bullet_Pool,
 	beams:         Beam_Pool,
 	particles:     Particle_Pool,
@@ -47,6 +48,7 @@ init :: proc() {
 	init_background(&gs.background)
 	init_player(&gs.player)
 	init_enemies(&gs.enemies)
+	init_sneaks(&gs.sneaks)
 
 	gs.running = true
 }
@@ -74,18 +76,21 @@ update :: proc() {
 	dt := rl.GetFrameTime()
 	update_background(&gs.background, dt)
 	update_player(&gs.player, dt)
-	update_enemies(&gs.enemies, &gs.player, &gs.bullets, dt)
-	update_player_attack(&gs.player, &gs.beams, &gs.enemies, &gs.particles, dt)
+	update_enemies(&gs.enemies, &gs.bullets, dt)
+	update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, dt)
+	update_player_attack(&gs.player, &gs.beams, &gs.enemies, &gs.sneaks, &gs.particles, dt)
 	update_beams(&gs.beams, dt)
 	update_particles(&gs.particles, dt)
-	update_bullets(&gs.bullets, dt)
+	update_bullets(&gs.bullets, &gs.enemies, &gs.sneaks, dt)
 	collide_bullets_player(&gs.bullets, &gs.player)
+	collide_bullets_enemies(&gs.bullets, &gs.enemies, &gs.sneaks, &gs.particles)
 
 	rl.BeginTextureMode(gs.render_target)
 	rl.ClearBackground(rl.BLACK)
 	draw_background(&gs.background)
 	rl.BeginMode2D(gs.camera)
 	draw_enemies(&gs.enemies)
+	draw_sneaks(&gs.sneaks)
 	draw_player(&gs.player)
 	draw_bullets(&gs.bullets)
 	draw_particles(&gs.particles)
@@ -109,6 +114,7 @@ update :: proc() {
 
 shutdown :: proc() {
 	unload_enemies(&gs.enemies)
+	unload_sneaks(&gs.sneaks)
 	unload_player(&gs.player)
 	unload_background(&gs.background)
 	rl.UnloadRenderTexture(gs.render_target)

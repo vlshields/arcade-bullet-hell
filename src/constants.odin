@@ -25,11 +25,15 @@ RETICLE_FRAME_H :: 8 // px (sprite source)
 RETICLE_DISTANCE :: 90.0 // px (from player center)
 
 PLAYER_DASH_SPEED :: 480.0 // px/s
-PLAYER_DASH_DURATION :: 0.29 // s
-PLAYER_DASH_COOLDOWN :: 0.65 // s (from dash start; must exceed DASH_DURATION)
+PLAYER_DASH_DURATION :: 0.18 // s
+PLAYER_DASH_COOLDOWN :: 0.45 // s (from dash start; must exceed DASH_DURATION)
 PLAYER_DASH_TRAIL_LEN :: 12 // count (afterimage snapshots; one per frame during dash)
 PLAYER_DASH_TRAIL_FADE_TIME :: 0.35 // s (afterimage visibility after dash starts)
 PLAYER_DASH_TRAIL_MAX_ALPHA :: 0.65 // multiplier (cap on newest afterimage alpha)
+
+PLAYER_MAX_STAMINA :: 50.0 // stamina
+PLAYER_DASH_STAMINA_COST :: 5.0 // stamina/dash
+PLAYER_STAMINA_RECOVER_RATE :: 2.0 // stamina/s (1 per 0.5s)
 
 ENEMY_COUNT :: 3 // count
 ENEMY_FRAME_W :: 16 // px (sprite source)
@@ -41,7 +45,6 @@ ENEMY_ORBIT_RADIUS :: 120.0 // px (from player center)
 ENEMY_SPAWN_RADIUS :: 500.0 // px (from player center)
 ENEMY_APPROACH_SPEED :: 200.0 // px/s
 ENEMY_ORBIT_SPEED :: 0.8 // rad/s
-ENEMY_ANCHOR_FOLLOW_RATE :: 0.6 // 1/s (exponential lerp rate of orbit anchor toward player)
 ENEMY_FIRE_INTERVAL :: 3.0 // s
 ENEMY_BULLETS_PER_BURST :: 12 // count
 ENEMY_BULLET_SPEED :: 70.0 // px/s
@@ -49,9 +52,31 @@ ENEMY_MAX_HP :: 21 // hp
 ENEMY_HIT_RADIUS :: 8.0 // px
 ENEMY_HIT_FLASH_TIME :: 0.08 // s
 
+SNEAK_MAX :: 2 // count (cap on simultaneously active sneaks)
+SNEAK_SPAWN_CHANCE :: 0.5 // probability [0..1] (rolled on any enemy death)
+SNEAK_FRAME_W :: 16 // px (sprite source)
+SNEAK_FRAME_H :: 16 // px (sprite source)
+SNEAK_FRAMES :: 1 // count
+SNEAK_DRAW_SCALE :: 2 // multiplier (unitless)
+SNEAK_SPAWN_MARGIN :: 24.0 // px (from viewport edges when picking spawn / teleport point)
+SNEAK_SWAY_AMPLITUDE :: 14.0 // px (lateral offset from spawn anchor)
+SNEAK_SWAY_FREQ :: 1.4 // Hz
+SNEAK_BURST_INTERVAL :: 0.3333 // s (3 bursts per second)
+SNEAK_BULLETS_PER_BURST :: 4 // count
+SNEAK_BURST_FAN_DEG :: 24.0 // deg (total fan width across the 4 bullets, aimed at player)
+SNEAK_BULLET_SPEED :: 90.0 // px/s
+SNEAK_TELEPORT_INTERVAL :: 10.0 // s
+SNEAK_MAX_HP :: 6 // hp
+SNEAK_HIT_RADIUS :: 7.0 // px
+SNEAK_HIT_FLASH_TIME :: 0.08 // s
+
 BULLET_LIFE :: 4.0 // s
 BULLET_RADIUS :: 3.0 // px
 MAX_BULLETS :: 256 // count (pool capacity)
+
+REFLECT_HOMING_RATE :: 1.1 // 1/s (exponential lerp rate of reflected bullet velocity toward nearest enemy)
+REFLECT_DAMAGE :: 8 // hp/hit
+REFLECT_IMPACT_PARTICLES :: 5 // count (per enemy hit by reflected bullet)
 
 LASER_FIRE_INTERVAL :: 0.19 // s (between shots)
 LASER_DAMAGE :: 6 // hp/hit
@@ -73,3 +98,4 @@ MAX_PARTICLES :: 256 // count (pool capacity)
 HP_BAR_W :: 80 // px
 HP_BAR_H :: 6 // px
 HP_BAR_MARGIN :: 6 // px (from screen edge)
+STATUS_BAR_GAP :: 2 // px (vertical gap between stacked status bars)
