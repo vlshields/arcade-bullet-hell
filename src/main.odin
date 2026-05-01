@@ -85,7 +85,7 @@ update :: proc() {
 	rl.ClearBackground(rl.BLACK)
 	draw_background(&gs.background)
 	rl.BeginMode2D(gs.camera)
-	draw_enemies(&gs.enemies, &gs.player)
+	draw_enemies(&gs.enemies)
 	draw_player(&gs.player)
 	draw_bullets(&gs.bullets)
 	draw_particles(&gs.particles)

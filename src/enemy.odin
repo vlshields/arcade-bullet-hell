@@ -5,6 +5,7 @@ import "core:math/rand"
 import rl "vendor:raylib"
 
 Enemy :: struct {
+	anchor:     rl.Vector2,
 	angle:      f32,
 	radius:     f32,
 	frame:      int,
@@ -27,6 +28,7 @@ init_enemies :: proc(pool: ^Enemy_Pool) {
 	pool.flash_shader = load_flash_shader()
 	for i in 0 ..< ENEMY_COUNT {
 		e := &pool.enemies[i]
+		e.anchor = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2}
 		e.angle = f32(i) * math.TAU / f32(ENEMY_COUNT)
 		e.radius = ENEMY_SPAWN_RADIUS
 		e.fire_timer = rand.float32() * ENEMY_FIRE_INTERVAL
@@ -53,10 +55,10 @@ unload_enemies :: proc(pool: ^Enemy_Pool) {
 	rl.UnloadShader(pool.flash_shader)
 }
 
-enemy_center :: proc(e: ^Enemy, player_center: rl.Vector2) -> rl.Vector2 {
+enemy_center :: proc(e: ^Enemy) -> rl.Vector2 {
 	return {
-		player_center.x + math.cos(e.angle) * e.radius,
-		player_center.y + math.sin(e.angle) * e.radius,
+		e.anchor.x + math.cos(e.angle) * e.radius,
+		e.anchor.y + math.sin(e.angle) * e.radius,
 	}
 }
 
@@ -64,12 +66,14 @@ update_enemies :: proc(pool: ^Enemy_Pool, player: ^Player, bullets: ^Bullet_Pool
 	pcx := player.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
 	pcy := player.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
 	player_center := rl.Vector2{pcx, pcy}
+	follow_k := 1 - math.exp(-ENEMY_ANCHOR_FOLLOW_RATE * dt)
 
 	for i in 0 ..< ENEMY_COUNT {
 		e := &pool.enemies[i]
 		if !e.active {
 			continue
 		}
+		e.anchor += (player_center - e.anchor) * follow_k
 		if e.hit_flash > 0 {
 			e.hit_flash -= dt
 			if e.hit_flash < 0 {
@@ -102,7 +106,7 @@ update_enemies :: proc(pool: ^Enemy_Pool, player: ^Player, bullets: ^Bullet_Pool
 		e.fire_timer += dt
 		if e.fire_timer >= ENEMY_FIRE_INTERVAL {
 			e.fire_timer -= ENEMY_FIRE_INTERVAL
-			center := enemy_center(e, player_center)
+			center := enemy_center(e)
 			for b in 0 ..< ENEMY_BULLETS_PER_BURST {
 				angle := f32(b) * (math.TAU / f32(ENEMY_BULLETS_PER_BURST))
 				vel := rl.Vector2 {
@@ -115,11 +119,7 @@ update_enemies :: proc(pool: ^Enemy_Pool, player: ^Player, bullets: ^Bullet_Pool
 	}
 }
 
-draw_enemies :: proc(pool: ^Enemy_Pool, player: ^Player) {
-	pcx := player.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
-	pcy := player.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
-	player_center := rl.Vector2{pcx, pcy}
-
+draw_enemies :: proc(pool: ^Enemy_Pool) {
 	draw_w := f32(ENEMY_FRAME_W * ENEMY_DRAW_SCALE)
 	draw_h := f32(ENEMY_FRAME_H * ENEMY_DRAW_SCALE)
 
@@ -128,7 +128,7 @@ draw_enemies :: proc(pool: ^Enemy_Pool, player: ^Player) {
 		if !e.active {
 			continue
 		}
-		center := enemy_center(e, player_center)
+		center := enemy_center(e)
 		src := rl.Rectangle {
 			f32(e.frame * ENEMY_FRAME_W),
 			0,

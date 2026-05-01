@@ -302,13 +302,12 @@ update_player_attack :: proc(
 	end := rl.Vector2{pcx, 0}
 	spawn_laser(beams, start, end)
 
-	player_center := rl.Vector2{pcx, pcy}
 	for i in 0 ..< ENEMY_COUNT {
 		e := &enemies.enemies[i]
 		if !e.active {
 			continue
 		}
-		ec := enemy_center(e, player_center)
+		ec := enemy_center(e)
 		if ec.y > pcy {
 			continue
 		}

@@ -24,9 +24,9 @@ RETICLE_FRAME_W :: 8 // px (sprite source)
 RETICLE_FRAME_H :: 8 // px (sprite source)
 RETICLE_DISTANCE :: 90.0 // px (from player center)
 
-PLAYER_DASH_SPEED :: 380.0 // px/s
-PLAYER_DASH_DURATION :: 0.18 // s
-PLAYER_DASH_COOLDOWN :: 0.55 // s (from dash start; must exceed DASH_DURATION)
+PLAYER_DASH_SPEED :: 480.0 // px/s
+PLAYER_DASH_DURATION :: 0.29 // s
+PLAYER_DASH_COOLDOWN :: 0.65 // s (from dash start; must exceed DASH_DURATION)
 PLAYER_DASH_TRAIL_LEN :: 12 // count (afterimage snapshots; one per frame during dash)
 PLAYER_DASH_TRAIL_FADE_TIME :: 0.35 // s (afterimage visibility after dash starts)
 PLAYER_DASH_TRAIL_MAX_ALPHA :: 0.65 // multiplier (cap on newest afterimage alpha)
@@ -41,6 +41,7 @@ ENEMY_ORBIT_RADIUS :: 120.0 // px (from player center)
 ENEMY_SPAWN_RADIUS :: 500.0 // px (from player center)
 ENEMY_APPROACH_SPEED :: 200.0 // px/s
 ENEMY_ORBIT_SPEED :: 0.8 // rad/s
+ENEMY_ANCHOR_FOLLOW_RATE :: 0.6 // 1/s (exponential lerp rate of orbit anchor toward player)
 ENEMY_FIRE_INTERVAL :: 3.0 // s
 ENEMY_BULLETS_PER_BURST :: 12 // count
 ENEMY_BULLET_SPEED :: 70.0 // px/s
