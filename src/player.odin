@@ -19,6 +19,10 @@ Player :: struct {
 	stamina:          f32,
 	invuln_timer:     f32,
 	fire_timer:       f32,
+	hold_time:        f32,
+	charging:         bool,
+	charge:           f32,
+	charge_beam_idx:  int,
 	dash_timer:       f32,
 	dash_cooldown:    f32,
 	dash_velocity:    rl.Vector2,
@@ -56,6 +60,10 @@ init_player :: proc(p: ^Player) {
 	p.stamina = PLAYER_MAX_STAMINA
 	p.invuln_timer = 0
 	p.fire_timer = 0
+	p.hold_time = 0
+	p.charging = false
+	p.charge = 0
+	p.charge_beam_idx = -1
 	p.dash_timer = 0
 	p.dash_cooldown = 0
 	p.dash_velocity = {0, 0}
@@ -315,15 +323,74 @@ update_player_attack :: proc(
 			p.fire_timer = 0
 		}
 	}
-	if !input_attack() || p.fire_timer > 0 {
-		return
-	}
-	p.fire_timer = LASER_FIRE_INTERVAL
 
 	pcx := p.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
 	pcy := p.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
 	start := rl.Vector2{pcx, pcy}
 	end := rl.Vector2{pcx, 0}
+
+	held := input_attack_held()
+
+	// Track continuous hold duration so we can defer charging until the hold threshold.
+	if held {
+		p.hold_time += dt
+	} else {
+		p.hold_time = 0
+	}
+
+	// Original laser: fires while held, on the LASER_FIRE_INTERVAL cadence.
+	if held && p.fire_timer <= 0 {
+		p.fire_timer = LASER_FIRE_INTERVAL
+		fire_laser(start, end, pcy, enemies, sneaks, particles, beams)
+	}
+
+	// Once the player has held long enough, begin charging.
+	if held && !p.charging && p.hold_time >= CHARGE_BEAM_HOLD_DELAY {
+		idx := start_charging_beam(beams, start, end)
+		if idx >= 0 {
+			p.charging = true
+			p.charge_beam_idx = idx
+			p.charge = 0
+		}
+	}
+
+	if !p.charging {
+		return
+	}
+
+	b := &beams.beams[p.charge_beam_idx]
+	if !b.active || !b.charging {
+		// Defensive: slot was clobbered; abort cleanly.
+		p.charging = false
+		p.charge_beam_idx = -1
+		return
+	}
+
+	if held {
+		p.charge = min(p.charge + dt * CHARGE_BEAM_RATE, 1.0)
+		b.charge = p.charge
+		b.start = start
+		b.end = end
+		spawn_gather_particle(particles, start, rl.MAGENTA, p.charge)
+	}
+
+	if input_attack_released() {
+		release_charge_beam(b)
+		fire_charge_beam(b, p.charge, enemies, sneaks, particles)
+		p.charging = false
+		p.charge_beam_idx = -1
+		p.charge = 0
+	}
+}
+
+fire_laser :: proc(
+	start, end: rl.Vector2,
+	pcy: f32,
+	enemies: ^Enemy_Pool,
+	sneaks: ^Sneak_Pool,
+	particles: ^Particle_Pool,
+	beams: ^Beam_Pool,
+) {
 	spawn_laser(beams, start, end)
 
 	for i in 0 ..< ENEMY_COUNT {
@@ -335,7 +402,7 @@ update_player_attack :: proc(
 		if ec.y > pcy {
 			continue
 		}
-		if abs(ec.x - pcx) > ENEMY_HIT_RADIUS {
+		if abs(ec.x - start.x) > ENEMY_HIT_RADIUS {
 			continue
 		}
 		killed := damage_enemy(e, LASER_DAMAGE)
@@ -354,7 +421,7 @@ update_player_attack :: proc(
 		if sc.y > pcy {
 			continue
 		}
-		if abs(sc.x - pcx) > SNEAK_HIT_RADIUS {
+		if abs(sc.x - start.x) > SNEAK_HIT_RADIUS {
 			continue
 		}
 		killed := damage_sneak(s, LASER_DAMAGE)
@@ -363,4 +430,57 @@ update_player_attack :: proc(
 			try_spawn_sneak(sneaks)
 		}
 	}
+}
+
+fire_charge_beam :: proc(
+	b: ^Beam,
+	charge: f32,
+	enemies: ^Enemy_Pool,
+	sneaks: ^Sneak_Pool,
+	particles: ^Particle_Pool,
+) {
+	damage := CHARGE_BEAM_BASE_DAMAGE + int(f32(CHARGE_BEAM_DAMAGE_BONUS) * charge)
+	half_width := b.thickness * 0.5 + CHARGE_BEAM_HIT_PAD
+	pcx := b.start.x
+
+	for i in 0 ..< ENEMY_COUNT {
+		e := &enemies.enemies[i]
+		if !e.active {
+			continue
+		}
+		ec := enemy_center(e)
+		if ec.y > b.start.y {
+			continue
+		}
+		if abs(ec.x - pcx) > half_width + ENEMY_HIT_RADIUS {
+			continue
+		}
+		killed := damage_enemy(e, damage)
+		spawn_impact_particles(particles, ec, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
+		if killed {
+			try_spawn_sneak(sneaks)
+		}
+	}
+
+	for i in 0 ..< SNEAK_MAX {
+		s := &sneaks.sneaks[i]
+		if !s.active {
+			continue
+		}
+		sc := sneak_center(s)
+		if sc.y > b.start.y {
+			continue
+		}
+		if abs(sc.x - pcx) > half_width + SNEAK_HIT_RADIUS {
+			continue
+		}
+		killed := damage_sneak(s, damage)
+		spawn_impact_particles(particles, sc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
+		if killed {
+			try_spawn_sneak(sneaks)
+		}
+	}
+
+	burst := CHARGE_BEAM_RELEASE_BURST_BASE + int(f32(CHARGE_BEAM_RELEASE_BURST_BONUS) * charge)
+	spawn_impact_particles(particles, b.end, rl.MAGENTA, burst)
 }

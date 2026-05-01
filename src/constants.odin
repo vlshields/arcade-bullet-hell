@@ -78,12 +78,29 @@ REFLECT_HOMING_RATE :: 1.1 // 1/s (exponential lerp rate of reflected bullet vel
 REFLECT_DAMAGE :: 8 // hp/hit
 REFLECT_IMPACT_PARTICLES :: 5 // count (per enemy hit by reflected bullet)
 
-LASER_FIRE_INTERVAL :: 0.19 // s (between shots)
+LASER_FIRE_INTERVAL :: 0.19 // s (between shots while shoot button held)
 LASER_DAMAGE :: 6 // hp/hit
 LASER_LIFETIME :: 0.08 // s
 LASER_THICKNESS :: 1.0 // px (core line)
 LASER_GLOW_MULT :: 4.0 // multiplier (unitless, glow thickness vs core)
-LASER_IMPACT_PARTICLES :: 6 // count (per enemy hit)
+LASER_IMPACT_PARTICLES :: 6 // count (per enemy hit by laser)
+
+CHARGE_BEAM_BASE_DAMAGE :: 6 // hp/hit (released at >= MIN_FIRE charge)
+CHARGE_BEAM_DAMAGE_BONUS :: 6 // hp/hit (added at full charge; total = 2 * base)
+CHARGE_BEAM_HOLD_DELAY :: 1.0 // s (button must be held this long before charging begins)
+CHARGE_BEAM_RATE :: 2.0 // 1/s (charge fraction per second once charging starts; full in 0.5s after delay)
+CHARGE_BEAM_LIFETIME_BASE :: 0.3 // s (visible duration at zero charge)
+CHARGE_BEAM_LIFETIME_BONUS :: 0.3 // s (added at full charge)
+CHARGE_BEAM_THICKNESS_BASE :: 5.0 // px (released beam core width at zero charge)
+CHARGE_BEAM_THICKNESS_BONUS :: 25.0 // px (added at full charge)
+CHARGE_BEAM_HIT_PAD :: 4.0 // px (collision half-width pad beyond beam thickness)
+CHARGE_BEAM_IMPACT_PARTICLES :: 6 // count (per enemy hit by released beam)
+CHARGE_BEAM_RELEASE_BURST_BASE :: 10 // count (release-point particle burst at zero charge)
+CHARGE_BEAM_RELEASE_BURST_BONUS :: 30 // count (added at full charge)
+CHARGE_BEAM_FRINGE_COUNT :: 15 // count (electric fringe candidate positions per draw)
+CHARGE_BEAM_GATHER_DIST_MIN :: 30.0 // px (gather particle spawn distance from source)
+CHARGE_BEAM_GATHER_DIST_RANGE :: 20.0 // px (gather particle spawn distance random range)
+CHARGE_BEAM_GATHER_LIFE :: 0.2 // s (gather particle lifetime)
 MAX_BEAMS :: 16 // count (pool capacity)
 
 PARTICLE_GRAVITY :: 200.0 // px/s²

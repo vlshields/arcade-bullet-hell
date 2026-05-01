@@ -48,6 +48,30 @@ spawn_impact_particles :: proc(pool: ^Particle_Pool, pos: rl.Vector2, color: rl.
 	}
 }
 
+spawn_gather_particle :: proc(pool: ^Particle_Pool, target: rl.Vector2, color: rl.Color, charge: f32) {
+	for i in 0 ..< MAX_PARTICLES {
+		p := &pool.particles[i]
+		if p.active {
+			continue
+		}
+		angle := rand.float32() * math.TAU
+		dist := f32(CHARGE_BEAM_GATHER_DIST_MIN) + rand.float32() * f32(CHARGE_BEAM_GATHER_DIST_RANGE)
+		spawn_pos := rl.Vector2{target.x + math.cos(angle) * dist, target.y + math.sin(angle) * dist}
+		tinted := color
+		tinted.a = 200
+		p^ = Particle {
+			pos      = spawn_pos,
+			vel      = (target - spawn_pos) * 3,
+			lifetime = 0,
+			max_life = CHARGE_BEAM_GATHER_LIFE,
+			color    = tinted,
+			size     = 2 + charge * 3,
+			active   = true,
+		}
+		return
+	}
+}
+
 update_particles :: proc(pool: ^Particle_Pool, dt: f32) {
 	for i in 0 ..< MAX_PARTICLES {
 		p := &pool.particles[i]

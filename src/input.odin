@@ -52,12 +52,36 @@ input_move :: proc() -> rl.Vector2 {
 	return move
 }
 
-input_attack :: proc() -> bool {
+input_attack_pressed :: proc() -> bool {
+	if rl.IsMouseButtonPressed(.LEFT) {
+		return true
+	}
+	if rl.IsGamepadAvailable(GAMEPAD_ID) {
+		if rl.IsGamepadButtonPressed(GAMEPAD_ID, .RIGHT_TRIGGER_2) {
+			return true
+		}
+	}
+	return false
+}
+
+input_attack_held :: proc() -> bool {
 	if rl.IsMouseButtonDown(.LEFT) {
 		return true
 	}
 	if rl.IsGamepadAvailable(GAMEPAD_ID) {
 		if rl.IsGamepadButtonDown(GAMEPAD_ID, .RIGHT_TRIGGER_2) {
+			return true
+		}
+	}
+	return false
+}
+
+input_attack_released :: proc() -> bool {
+	if rl.IsMouseButtonReleased(.LEFT) {
+		return true
+	}
+	if rl.IsGamepadAvailable(GAMEPAD_ID) {
+		if rl.IsGamepadButtonReleased(GAMEPAD_ID, .RIGHT_TRIGGER_2) {
 			return true
 		}
 	}
