@@ -1,0 +1,8 @@
+*.png
+*.ogg
+*.wav
+*.bin
+build/
+*.sh
+*.ttf
+
