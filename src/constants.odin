@@ -44,15 +44,40 @@ ENEMY_DRAW_SCALE :: 2 // multiplier (unitless)
 ENEMY_ORBIT_RADIUS :: 120.0 // px (from player center)
 ENEMY_SPAWN_RADIUS :: 500.0 // px (from player center)
 ENEMY_APPROACH_SPEED :: 200.0 // px/s
-ENEMY_ORBIT_SPEED :: 0.8 // rad/s
+ENEMY_ORBIT_SPEED :: 0.6 // rad/s
 ENEMY_FIRE_INTERVAL :: 3.0 // s (initial; shrinks once after the threshold below)
 ENEMY_WAVE_BOOST_THRESHOLD :: 3 // count (waves cleared before fire-frequency boost applies)
 ENEMY_FIRE_FREQ_BOOST :: 0.5 // fraction (added to fire frequency at threshold; interval becomes interval / (1 + this))
 ENEMY_BULLETS_PER_BURST :: 12 // count
 ENEMY_BULLET_SPEED :: 70.0 // px/s
 ENEMY_MAX_HP :: 21 // hp
-ENEMY_HIT_RADIUS :: 8.0 // px
+ENEMY_HIT_RADIUS :: 10.0 // px
 ENEMY_HIT_FLASH_TIME :: 0.08 // s
+
+BOSS_TRIGGER_WAVE :: 6 // count (grunt waves cleared before Golgatha spawns)
+BOSS_MAX_HP :: 70 // hp
+BOSS_FRAME_W :: 32 // px (sprite source)
+BOSS_FRAME_H :: 32 // px (sprite source)
+BOSS_FRAMES :: 5 // count
+BOSS_DRAW_SCALE :: 2 // multiplier (unitless)
+BOSS_ANIM_FPS :: 6.0 // frames/s
+BOSS_HIT_RADIUS :: 16.0 // px
+BOSS_HIT_FLASH_TIME :: 0.08 // s
+BOSS_SPAWN_X :: 320.0 // px (anchor x; SCREEN_WIDTH / 2)
+BOSS_SPAWN_Y :: 60.0 // px (anchor y, fixed; sway only on x)
+BOSS_SWAY_AMPLITUDE :: 18.0 // px (subtle lateral offset from anchor)
+BOSS_SWAY_FREQ :: 0.8 // Hz (brisk side-to-side cadence)
+BOSS_FIRE_INTERVAL :: 0.033 // s (matches bhport reference: 2 frames @ 60fps)
+BOSS_BULLET_ROWS :: 6 // count (matches bhport reference default)
+BOSS_ANGLE_INCREMENT_DEG :: 5.0 // deg/burst (rotation of base direction; matches bhport reference)
+BOSS_BULLET_SPEED :: 130.0 // px/s (bhport reference scaled to 640x360)
+BOSS_SNEAK_SPAWN_INTERVAL :: 4.0 // s (cadence of try_spawn_sneak attempts during boss fight)
+BOSS_NAME :: "GOLGATHA" // string
+BOSS_NAME_FONT_SIZE :: 12 // px
+BOSS_HUD_BAR_W :: 360 // px (centered at top of screen)
+BOSS_HUD_BAR_H :: 8 // px
+BOSS_HUD_NAME_Y :: 6 // px (name top edge from screen top)
+BOSS_HUD_BAR_Y :: 22 // px (bar top edge from screen top)
 
 SNEAK_MAX :: 2 // count (cap on simultaneously active sneaks)
 SNEAK_SPAWN_CHANCE :: 0.5 // probability [0..1] (rolled on any enemy death)
@@ -89,6 +114,7 @@ LASER_IMPACT_PARTICLES :: 6 // count (per enemy hit by laser)
 
 CHARGE_BEAM_BASE_DAMAGE :: 6 // hp/hit (released at >= MIN_FIRE charge)
 CHARGE_BEAM_DAMAGE_BONUS :: 6 // hp/hit (added at full charge; total = 2 * base)
+CHARGE_BEAM_FULL_STAMINA_COST :: 15.0 // stamina (at full charge; scales linearly with charge on release)
 CHARGE_BEAM_HOLD_DELAY :: 1.0 // s (button must be held this long before charging begins)
 CHARGE_BEAM_RATE :: 2.0 // 1/s (charge fraction per second once charging starts; full in 0.5s after delay)
 CHARGE_BEAM_LIFETIME_BASE :: 0.3 // s (visible duration at zero charge)
@@ -105,6 +131,14 @@ CHARGE_BEAM_GATHER_DIST_RANGE :: 20.0 // px (gather particle spawn distance rand
 CHARGE_BEAM_GATHER_LIFE :: 0.2 // s (gather particle lifetime)
 MAX_BEAMS :: 16 // count (pool capacity)
 
+HEALTHPACK_MAX :: 8 // count (pool capacity)
+HEALTHPACK_DROP_CHANCE :: 0.15 // probability [0..1] (rolled per enemy/boss kill)
+HEALTHPACK_HEAL :: 10 // hp (per pickup; clamped to PLAYER_MAX_HP)
+HEALTHPACK_RADIUS :: 6.0 // px (collision; sums with PLAYER_HIT_RADIUS for pickup)
+HEALTHPACK_ARM :: 4.5 // px (cross arm half-length at pulse=1)
+HEALTHPACK_THICK :: 3.0 // px (cross bar thickness)
+HEALTHPACK_PULSE_HZ :: 1.5 // Hz (visibility pulse cadence)
+
 PARTICLE_GRAVITY :: 200.0 // px/s²
 PARTICLE_SPEED_MIN :: 50.0 // px/s
 PARTICLE_SPEED_MAX :: 200.0 // px/s
@@ -118,3 +152,14 @@ HP_BAR_W :: 80 // px
 HP_BAR_H :: 6 // px
 HP_BAR_MARGIN :: 6 // px (from screen edge)
 STATUS_BAR_GAP :: 2 // px (vertical gap between stacked status bars)
+
+SCORE_KILL_LASER :: 10 // points (per enemy killed by the rapid laser)
+SCORE_KILL_CHARGE :: 15 // points (per enemy killed by the released charge beam)
+SCORE_KILL_REFLECT :: 25 // points (per enemy killed by a deflected bullet)
+SCORE_KILL_BOSS :: 100 // points (per boss kill)
+SCORE_FONT_SIZE :: 16 // px (top-left score readout)
+
+VICTORY_TITLE :: "Mission 1 Complete" // string
+VICTORY_TITLE_FONT_SIZE :: 24 // px
+VICTORY_SCORE_FONT_SIZE :: 16 // px
+VICTORY_OVERLAY_ALPHA :: 180 // alpha [0..255]

@@ -76,7 +76,7 @@ enemy_center :: proc(e: ^Enemy) -> rl.Vector2 {
 	}
 }
 
-update_enemies :: proc(pool: ^Enemy_Pool, bullets: ^Bullet_Pool, dt: f32) {
+update_enemies :: proc(pool: ^Enemy_Pool, boss: ^Boss_Pool, bullets: ^Bullet_Pool, dt: f32) {
 	any_alive := false
 	for i in 0 ..< ENEMY_COUNT {
 		if pool.enemies[i].active {
@@ -85,12 +85,19 @@ update_enemies :: proc(pool: ^Enemy_Pool, bullets: ^Bullet_Pool, dt: f32) {
 		}
 	}
 	if !any_alive {
-		pool.waves_cleared += 1
-		if !pool.boost_applied && pool.waves_cleared >= ENEMY_WAVE_BOOST_THRESHOLD {
-			pool.fire_interval /= 1.0 + ENEMY_FIRE_FREQ_BOOST
-			pool.boost_applied = true
+		// Suppress grunt respawns while Golgatha is on the field; sneaks still flow.
+		if !boss.boss.active {
+			pool.waves_cleared += 1
+			if pool.waves_cleared == BOSS_TRIGGER_WAVE {
+				spawn_boss(boss)
+			} else {
+				if !pool.boost_applied && pool.waves_cleared >= ENEMY_WAVE_BOOST_THRESHOLD {
+					pool.fire_interval /= 1.0 + ENEMY_FIRE_FREQ_BOOST
+					pool.boost_applied = true
+				}
+				spawn_grunt_wave(pool)
+			}
 		}
-		spawn_grunt_wave(pool)
 	}
 
 	for i in 0 ..< ENEMY_COUNT {

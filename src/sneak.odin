@@ -132,6 +132,7 @@ update_sneaks :: proc(pool: ^Sneak_Pool, player: ^Player, bullets: ^Bullet_Pool,
 			base_angle := math.atan2(to_player.y, to_player.x)
 			fan_rad := f32(SNEAK_BURST_FAN_DEG) * math.PI / 180.0
 			n := f32(SNEAK_BULLETS_PER_BURST)
+			color := rl.Color{0x99, 0x33, 0x66, 0xff}
 			for b in 0 ..< SNEAK_BULLETS_PER_BURST {
 				t := f32(b) / (n - 1) - 0.5
 				angle := base_angle + t * fan_rad
@@ -139,7 +140,7 @@ update_sneaks :: proc(pool: ^Sneak_Pool, player: ^Player, bullets: ^Bullet_Pool,
 					math.cos(angle) * SNEAK_BULLET_SPEED,
 					math.sin(angle) * SNEAK_BULLET_SPEED,
 				}
-				spawn_bullet(bullets, s.pos, vel)
+				spawn_bullet(bullets, s.pos, vel, color)
 			}
 		}
 	}

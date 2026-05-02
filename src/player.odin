@@ -314,7 +314,10 @@ update_player_attack :: proc(
 	beams: ^Beam_Pool,
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
+	boss: ^Boss_Pool,
+	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
+	score: ^int,
 	dt: f32,
 ) {
 	if p.fire_timer > 0 {
@@ -341,11 +344,14 @@ update_player_attack :: proc(
 	// Original laser: fires while held, on the LASER_FIRE_INTERVAL cadence.
 	if held && p.fire_timer <= 0 {
 		p.fire_timer = LASER_FIRE_INTERVAL
-		fire_laser(start, end, pcy, enemies, sneaks, particles, beams)
+		fire_laser(start, end, pcy, enemies, sneaks, boss, packs, particles, beams, score)
 	}
 
 	// Once the player has held long enough, begin charging.
-	if held && !p.charging && p.hold_time >= CHARGE_BEAM_HOLD_DELAY {
+	if held &&
+	   !p.charging &&
+	   p.hold_time >= CHARGE_BEAM_HOLD_DELAY &&
+	   p.stamina >= CHARGE_BEAM_FULL_STAMINA_COST {
 		idx := start_charging_beam(beams, start, end)
 		if idx >= 0 {
 			p.charging = true
@@ -376,7 +382,11 @@ update_player_attack :: proc(
 
 	if input_attack_released() {
 		release_charge_beam(b)
-		fire_charge_beam(b, p.charge, enemies, sneaks, particles)
+		fire_charge_beam(b, p.charge, enemies, sneaks, boss, packs, particles, score)
+		p.stamina -= CHARGE_BEAM_FULL_STAMINA_COST * p.charge
+		if p.stamina < 0 {
+			p.stamina = 0
+		}
 		p.charging = false
 		p.charge_beam_idx = -1
 		p.charge = 0
@@ -388,8 +398,11 @@ fire_laser :: proc(
 	pcy: f32,
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
+	boss: ^Boss_Pool,
+	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
 	beams: ^Beam_Pool,
+	score: ^int,
 ) {
 	spawn_laser(beams, start, end)
 
@@ -408,7 +421,9 @@ fire_laser :: proc(
 		killed := damage_enemy(e, LASER_DAMAGE)
 		spawn_impact_particles(particles, ec, rl.RED, LASER_IMPACT_PARTICLES)
 		if killed {
+			score^ += SCORE_KILL_LASER
 			try_spawn_sneak(sneaks)
+			try_drop_healthpack(packs, ec)
 		}
 	}
 
@@ -427,7 +442,21 @@ fire_laser :: proc(
 		killed := damage_sneak(s, LASER_DAMAGE)
 		spawn_impact_particles(particles, sc, rl.RED, LASER_IMPACT_PARTICLES)
 		if killed {
+			score^ += SCORE_KILL_LASER
 			try_spawn_sneak(sneaks)
+			try_drop_healthpack(packs, sc)
+		}
+	}
+
+	if boss.boss.active {
+		bc := boss_center(&boss.boss)
+		if bc.y <= pcy && abs(bc.x - start.x) <= BOSS_HIT_RADIUS {
+			killed := damage_boss(&boss.boss, LASER_DAMAGE)
+			spawn_impact_particles(particles, bc, rl.RED, LASER_IMPACT_PARTICLES)
+			if killed {
+				score^ += SCORE_KILL_BOSS
+				try_drop_healthpack(packs, bc)
+			}
 		}
 	}
 }
@@ -437,7 +466,10 @@ fire_charge_beam :: proc(
 	charge: f32,
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
+	boss: ^Boss_Pool,
+	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
+	score: ^int,
 ) {
 	damage := CHARGE_BEAM_BASE_DAMAGE + int(f32(CHARGE_BEAM_DAMAGE_BONUS) * charge)
 	half_width := b.thickness * 0.5 + CHARGE_BEAM_HIT_PAD
@@ -458,7 +490,9 @@ fire_charge_beam :: proc(
 		killed := damage_enemy(e, damage)
 		spawn_impact_particles(particles, ec, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 		if killed {
+			score^ += SCORE_KILL_CHARGE
 			try_spawn_sneak(sneaks)
+			try_drop_healthpack(packs, ec)
 		}
 	}
 
@@ -477,7 +511,21 @@ fire_charge_beam :: proc(
 		killed := damage_sneak(s, damage)
 		spawn_impact_particles(particles, sc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 		if killed {
+			score^ += SCORE_KILL_CHARGE
 			try_spawn_sneak(sneaks)
+			try_drop_healthpack(packs, sc)
+		}
+	}
+
+	if boss.boss.active {
+		bc := boss_center(&boss.boss)
+		if bc.y <= b.start.y && abs(bc.x - pcx) <= half_width + BOSS_HIT_RADIUS {
+			killed := damage_boss(&boss.boss, damage)
+			spawn_impact_particles(particles, bc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
+			if killed {
+				score^ += SCORE_KILL_BOSS
+				try_drop_healthpack(packs, bc)
+			}
 		}
 	}
 

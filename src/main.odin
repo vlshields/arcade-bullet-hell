@@ -1,5 +1,6 @@
 package game
 
+import "core:fmt"
 import rl "vendor:raylib"
 
 Game_State :: struct {
@@ -9,6 +10,8 @@ Game_State :: struct {
 	player:        Player,
 	enemies:       Enemy_Pool,
 	sneaks:        Sneak_Pool,
+	boss:          Boss_Pool,
+	healthpacks:   HealthPack_Pool,
 	bullets:       Bullet_Pool,
 	beams:         Beam_Pool,
 	particles:     Particle_Pool,
@@ -20,7 +23,9 @@ Game_State :: struct {
 	mouse_x:       int,
 	mouse_y:       int,
 	mouse_down:    bool,
+	score:         int,
 	running:       bool,
+	victory:       bool,
 }
 
 @(private = "file")
@@ -49,6 +54,8 @@ init :: proc() {
 	init_player(&gs.player)
 	init_enemies(&gs.enemies)
 	init_sneaks(&gs.sneaks)
+	init_boss(&gs.boss)
+	init_healthpacks(&gs.healthpacks)
 
 	gs.running = true
 }
@@ -74,16 +81,44 @@ update :: proc() {
 	}
 
 	dt := rl.GetFrameTime()
-	update_background(&gs.background, dt)
-	update_player(&gs.player, dt)
-	update_enemies(&gs.enemies, &gs.bullets, dt)
-	update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, dt)
-	update_player_attack(&gs.player, &gs.beams, &gs.enemies, &gs.sneaks, &gs.particles, dt)
-	update_beams(&gs.beams, dt)
-	update_particles(&gs.particles, dt)
-	update_bullets(&gs.bullets, &gs.enemies, &gs.sneaks, dt)
-	collide_bullets_player(&gs.bullets, &gs.player)
-	collide_bullets_enemies(&gs.bullets, &gs.enemies, &gs.sneaks, &gs.particles)
+
+	if gs.boss.boss.defeated && !gs.victory {
+		gs.victory = true
+		clear_world()
+	}
+
+	if !gs.victory {
+		update_background(&gs.background, dt)
+		update_player(&gs.player, dt)
+		update_enemies(&gs.enemies, &gs.boss, &gs.bullets, dt)
+		update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, dt)
+		update_boss(&gs.boss, &gs.bullets, &gs.sneaks, dt)
+		update_player_attack(
+			&gs.player,
+			&gs.beams,
+			&gs.enemies,
+			&gs.sneaks,
+			&gs.boss,
+			&gs.healthpacks,
+			&gs.particles,
+			&gs.score,
+			dt,
+		)
+		update_beams(&gs.beams, dt)
+		update_particles(&gs.particles, dt)
+		update_bullets(&gs.bullets, &gs.enemies, &gs.sneaks, &gs.boss, dt)
+		collide_bullets_player(&gs.bullets, &gs.player)
+		collide_bullets_enemies(
+			&gs.bullets,
+			&gs.enemies,
+			&gs.sneaks,
+			&gs.boss,
+			&gs.healthpacks,
+			&gs.particles,
+			&gs.score,
+		)
+		update_healthpacks(&gs.healthpacks, &gs.player, dt)
+	}
 
 	rl.BeginTextureMode(gs.render_target)
 	rl.ClearBackground(rl.BLACK)
@@ -91,12 +126,19 @@ update :: proc() {
 	rl.BeginMode2D(gs.camera)
 	draw_enemies(&gs.enemies)
 	draw_sneaks(&gs.sneaks)
+	draw_boss(&gs.boss)
 	draw_player(&gs.player)
 	draw_bullets(&gs.bullets)
+	draw_healthpacks(&gs.healthpacks)
 	draw_particles(&gs.particles)
 	draw_beams(&gs.beams)
 	rl.EndMode2D()
 	draw_player_hud(&gs.player)
+	draw_boss_hud(&gs.boss)
+	draw_score(gs.score)
+	if gs.victory {
+		draw_victory(gs.score)
+	}
 	rl.EndTextureMode()
 
 	rl.BeginDrawing()
@@ -115,6 +157,7 @@ update :: proc() {
 shutdown :: proc() {
 	unload_enemies(&gs.enemies)
 	unload_sneaks(&gs.sneaks)
+	unload_boss(&gs.boss)
 	unload_player(&gs.player)
 	unload_background(&gs.background)
 	rl.UnloadRenderTexture(gs.render_target)
@@ -153,6 +196,54 @@ get_mouse_game_pos :: proc() -> rl.Vector2 {
 		return {0, 0}
 	}
 	return rl.Vector2{(wx - gs.offset_x) / gs.scale, (wy - gs.offset_y) / gs.scale}
+}
+
+clear_world :: proc() {
+	for i in 0 ..< ENEMY_COUNT {
+		gs.enemies.enemies[i].active = false
+	}
+	for i in 0 ..< SNEAK_MAX {
+		gs.sneaks.sneaks[i].active = false
+	}
+	for i in 0 ..< MAX_BULLETS {
+		gs.bullets.bullets[i].active = false
+	}
+	for i in 0 ..< MAX_BEAMS {
+		gs.beams.beams[i].active = false
+	}
+	for i in 0 ..< MAX_PARTICLES {
+		gs.particles.particles[i].active = false
+	}
+	for i in 0 ..< HEALTHPACK_MAX {
+		gs.healthpacks.packs[i].active = false
+	}
+	// Beam slot the player was charging into is now inactive; reset attack state.
+	gs.player.charging = false
+	gs.player.charge_beam_idx = -1
+	gs.player.charge = 0
+}
+
+draw_score :: proc(score: int) {
+	text := fmt.ctprintf("SCORE: %d", score)
+	rl.DrawText(text, HP_BAR_MARGIN, HP_BAR_MARGIN, SCORE_FONT_SIZE, rl.WHITE)
+}
+
+draw_victory :: proc(score: int) {
+	rl.DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, rl.Color{0, 0, 0, VICTORY_OVERLAY_ALPHA})
+
+	title: cstring = VICTORY_TITLE
+	title_w := rl.MeasureText(title, VICTORY_TITLE_FONT_SIZE)
+	title_x: i32 = (SCREEN_WIDTH - title_w) / 2
+	title_y: i32 = SCREEN_HEIGHT / 2 - VICTORY_TITLE_FONT_SIZE
+	rl.DrawText(title, title_x + 2, title_y + 2, VICTORY_TITLE_FONT_SIZE, rl.BLACK)
+	rl.DrawText(title, title_x, title_y, VICTORY_TITLE_FONT_SIZE, rl.WHITE)
+
+	score_text := fmt.ctprintf("FINAL SCORE: %d", score)
+	score_w := rl.MeasureText(score_text, VICTORY_SCORE_FONT_SIZE)
+	score_x: i32 = (SCREEN_WIDTH - score_w) / 2
+	score_y: i32 = title_y + VICTORY_TITLE_FONT_SIZE + 12
+	rl.DrawText(score_text, score_x + 1, score_y + 1, VICTORY_SCORE_FONT_SIZE, rl.BLACK)
+	rl.DrawText(score_text, score_x, score_y, VICTORY_SCORE_FONT_SIZE, rl.YELLOW)
 }
 
 update_screen_scale :: proc() {

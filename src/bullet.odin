@@ -7,6 +7,7 @@ Bullet :: struct {
 	pos:         rl.Vector2,
 	vel:         rl.Vector2,
 	life:        f32,
+	color:       rl.Color,
 	active:      bool,
 	from_player: bool,
 }
@@ -15,13 +16,19 @@ Bullet_Pool :: struct {
 	bullets: [MAX_BULLETS]Bullet,
 }
 
-spawn_bullet :: proc(pool: ^Bullet_Pool, pos, vel: rl.Vector2, from_player := false) {
+spawn_bullet :: proc(
+	pool: ^Bullet_Pool,
+	pos, vel: rl.Vector2,
+	color: rl.Color = rl.RED,
+	from_player := false,
+) {
 	for i in 0 ..< MAX_BULLETS {
 		if !pool.bullets[i].active {
 			pool.bullets[i] = Bullet {
 				pos         = pos,
 				vel         = vel,
 				life        = BULLET_LIFE,
+				color       = color,
 				active      = true,
 				from_player = from_player,
 			}
@@ -30,7 +37,13 @@ spawn_bullet :: proc(pool: ^Bullet_Pool, pos, vel: rl.Vector2, from_player := fa
 	}
 }
 
-update_bullets :: proc(pool: ^Bullet_Pool, enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool, dt: f32) {
+update_bullets :: proc(
+	pool: ^Bullet_Pool,
+	enemies: ^Enemy_Pool,
+	sneaks: ^Sneak_Pool,
+	boss: ^Boss_Pool,
+	dt: f32,
+) {
 	steer_k := f32(1) - math.exp(-REFLECT_HOMING_RATE * dt)
 	for i in 0 ..< MAX_BULLETS {
 		b := &pool.bullets[i]
@@ -68,6 +81,17 @@ update_bullets :: proc(pool: ^Bullet_Pool, enemies: ^Enemy_Pool, sneaks: ^Sneak_
 				if d_sq < best_d_sq {
 					best_d_sq = d_sq
 					best_target = sc
+					found = true
+				}
+			}
+			if boss.boss.active {
+				bc := boss_center(&boss.boss)
+				dx := bc.x - b.pos.x
+				dy := bc.y - b.pos.y
+				d_sq := dx * dx + dy * dy
+				if d_sq < best_d_sq {
+					best_d_sq = d_sq
+					best_target = bc
 					found = true
 				}
 			}
@@ -124,12 +148,17 @@ collide_bullets_enemies :: proc(
 	pool: ^Bullet_Pool,
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
+	boss: ^Boss_Pool,
+	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
+	score: ^int,
 ) {
 	r_grunt := f32(ENEMY_HIT_RADIUS + BULLET_RADIUS)
 	r_grunt_sq := r_grunt * r_grunt
 	r_sneak := f32(SNEAK_HIT_RADIUS + BULLET_RADIUS)
 	r_sneak_sq := r_sneak * r_sneak
+	r_boss := f32(BOSS_HIT_RADIUS + BULLET_RADIUS)
+	r_boss_sq := r_boss * r_boss
 	for i in 0 ..< MAX_BULLETS {
 		b := &pool.bullets[i]
 		if !b.active || !b.from_player {
@@ -154,7 +183,9 @@ collide_bullets_enemies :: proc(
 				)
 				b.active = false
 				if killed {
+					score^ += SCORE_KILL_REFLECT
 					try_spawn_sneak(sneaks)
+					try_drop_healthpack(packs, ec)
 				}
 				hit = true
 				break
@@ -181,9 +212,34 @@ collide_bullets_enemies :: proc(
 				)
 				b.active = false
 				if killed {
+					score^ += SCORE_KILL_REFLECT
 					try_spawn_sneak(sneaks)
+					try_drop_healthpack(packs, sc)
 				}
+				hit = true
 				break
+			}
+		}
+		if hit {
+			continue
+		}
+		if boss.boss.active {
+			bc := boss_center(&boss.boss)
+			dx := b.pos.x - bc.x
+			dy := b.pos.y - bc.y
+			if dx * dx + dy * dy <= r_boss_sq {
+				killed := damage_boss(&boss.boss, REFLECT_DAMAGE)
+				spawn_impact_particles(
+					particles,
+					bc,
+					rl.Color{160, 220, 255, 255},
+					REFLECT_IMPACT_PARTICLES,
+				)
+				b.active = false
+				if killed {
+					score^ += SCORE_KILL_BOSS
+					try_drop_healthpack(packs, bc)
+				}
 			}
 		}
 	}
@@ -195,7 +251,7 @@ draw_bullets :: proc(pool: ^Bullet_Pool) {
 		if !b.active {
 			continue
 		}
-		col := rl.RED
+		col := b.color
 		if b.from_player {
 			col = rl.Color{160, 220, 255, 255}
 		}
