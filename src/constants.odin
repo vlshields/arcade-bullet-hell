@@ -44,7 +44,8 @@ SLOW_TIME_TINT_ALPHA_BASE :: 55 // alpha [0..255] (midpoint of the breathing pul
 SLOW_TIME_TINT_ALPHA_PULSE :: 20 // alpha [0..255] (amplitude of the breathing pulse around the base)
 SLOW_TIME_PULSE_HZ :: 1.6 // Hz (breathing cadence for the tint pulse)
 
-ENEMY_COUNT :: 3 // count
+ENEMY_COUNT :: 6 // count (shared pool capacity for the per-level main enemy — sized to the largest wave)
+GRUNT_WAVE_COUNT :: 3 // count (grunts per level-1 wave; orbit is evenly divided across this count)
 ENEMY_FRAME_W :: 16 // px (sprite source)
 ENEMY_FRAME_H :: 16 // px (sprite source)
 ENEMY_FRAMES :: 2 // count
@@ -62,6 +63,20 @@ ENEMY_BULLET_SPEED :: 70.0 // px/s
 ENEMY_MAX_HP :: 21 // hp
 ENEMY_HIT_RADIUS :: 10.0 // px
 ENEMY_HIT_FLASH_TIME :: 0.08 // s
+
+WEIRDGUY_WAVE_COUNT :: 6 // count (weird guys per level-2 wave; respawn as a fresh wave when all are dead)
+WEIRDGUY_MAX_HP :: 4 // hp
+WEIRDGUY_FRAME_W :: 16 // px (sprite source)
+WEIRDGUY_FRAME_H :: 16 // px (sprite source)
+WEIRDGUY_FRAMES :: 1 // count
+WEIRDGUY_DRAW_SCALE :: 2 // multiplier (unitless)
+WEIRDGUY_HIT_RADIUS :: 10.0 // px
+WEIRDGUY_PATROL_RANGE :: 220.0 // px (lateral viewport distance covered between turns)
+WEIRDGUY_SPEED :: 280.0 // px/s (lateral patrol speed; "rapidly across the viewport")
+WEIRDGUY_Y_MIN :: 30.0 // px (random spawn altitude lower bound)
+WEIRDGUY_Y_MAX :: 200.0 // px (random spawn altitude upper bound; keeps weird guys above typical player y)
+WEIRDGUY_FIRE_INTERVAL :: 0.08 // s (between single-bullet shots; "extremely rapid")
+WEIRDGUY_BULLET_SPEED :: 100.0 // px/s
 
 BOSS_TRIGGER_WAVE :: 6 // count (grunt waves cleared before Golgatha spawns)
 BOSS_MAX_HP :: 110 // hp

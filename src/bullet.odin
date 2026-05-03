@@ -155,8 +155,6 @@ collide_bullets_enemies :: proc(
 	particles: ^Particle_Pool,
 	score: ^int,
 ) {
-	r_grunt := f32(ENEMY_HIT_RADIUS + BULLET_RADIUS)
-	r_grunt_sq := r_grunt * r_grunt
 	r_boss := f32(BOSS_HIT_RADIUS + BULLET_RADIUS)
 	r_boss_sq := r_boss * r_boss
 	for i in 0 ..< MAX_BULLETS {
@@ -171,9 +169,10 @@ collide_bullets_enemies :: proc(
 				continue
 			}
 			ec := enemy_center(e)
+			r := enemy_hit_radius(e) + BULLET_RADIUS
 			dx := b.pos.x - ec.x
 			dy := b.pos.y - ec.y
-			if dx * dx + dy * dy <= r_grunt_sq {
+			if dx * dx + dy * dy <= r * r {
 				killed := damage_enemy(e, REFLECT_DAMAGE)
 				spawn_impact_particles(
 					particles,

@@ -469,7 +469,7 @@ fire_laser :: proc(
 		if ec.y > pcy {
 			continue
 		}
-		if abs(ec.x - start.x) > ENEMY_HIT_RADIUS {
+		if abs(ec.x - start.x) > enemy_hit_radius(e) {
 			continue
 		}
 		killed := damage_enemy(e, LASER_DAMAGE)
@@ -538,7 +538,7 @@ fire_charge_beam :: proc(
 		if ec.y > b.start.y {
 			continue
 		}
-		if abs(ec.x - pcx) > half_width + ENEMY_HIT_RADIUS {
+		if abs(ec.x - pcx) > half_width + enemy_hit_radius(e) {
 			continue
 		}
 		killed := damage_enemy(e, damage)

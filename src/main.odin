@@ -122,7 +122,7 @@ update :: proc() {
 
 	if !gs.victory && !gs.transitioning {
 		update_player(&gs.player, dt)
-		update_enemies(&gs.enemies, &gs.boss, &gs.bullets, world_dt)
+		update_enemies(&gs.enemies, &gs.boss, &gs.bullets, &gs.player, world_dt)
 		update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, world_dt)
 		update_boss(&gs.boss, &gs.bullets, &gs.sneaks, world_dt)
 		update_player_attack(
@@ -300,6 +300,7 @@ advance_to_next_mission :: proc() {
 	gs.boss.boss.defeated = false
 	gs.boss.boss.active = false
 	gs.sneaks.level = gs.level
+	gs.enemies.level = gs.level
 	gs.player.hp = PLAYER_MAX_HP
 	gs.player.slow_time_unlocked = true
 }
