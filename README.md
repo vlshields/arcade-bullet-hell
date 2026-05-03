@@ -39,3 +39,10 @@ emcc -o $OUT_DIR/index.html $files \
 
 rm $OUT_DIR/game.wasm.o
 ```
+Give OUT_DIR a seperate build dir from cwd. Something like `$OUT_DIR = '/build/web'` is fine.  
+
+You'll then just need a simple http server from your target build dir. I use python's built in http server.
+
+### Desktop
+
+Compiling anything local with Odin is a breeze. The assets however are not included in this repo, so only the web build is officially supported.

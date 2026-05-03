@@ -43,6 +43,7 @@ update_bullets :: proc(
 	sneaks: ^Sneak_Pool,
 	boss: ^Boss_Pool,
 	dt: f32,
+	world_dt: f32,
 ) {
 	steer_k := f32(1) - math.exp(-REFLECT_HOMING_RATE * dt)
 	for i in 0 ..< MAX_BULLETS {
@@ -108,8 +109,9 @@ update_bullets :: proc(
 				}
 			}
 		}
-		b.pos += b.vel * dt
-		b.life -= dt
+		use_dt := b.from_player ? dt : world_dt
+		b.pos += b.vel * use_dt
+		b.life -= use_dt
 		if b.life <= 0 {
 			b.active = false
 		}
@@ -155,8 +157,6 @@ collide_bullets_enemies :: proc(
 ) {
 	r_grunt := f32(ENEMY_HIT_RADIUS + BULLET_RADIUS)
 	r_grunt_sq := r_grunt * r_grunt
-	r_sneak := f32(SNEAK_HIT_RADIUS + BULLET_RADIUS)
-	r_sneak_sq := r_sneak * r_sneak
 	r_boss := f32(BOSS_HIT_RADIUS + BULLET_RADIUS)
 	r_boss_sq := r_boss * r_boss
 	for i in 0 ..< MAX_BULLETS {
@@ -200,9 +200,10 @@ collide_bullets_enemies :: proc(
 				continue
 			}
 			sc := sneak_center(s)
+			r := sneak_hit_radius(s) + BULLET_RADIUS
 			dx := b.pos.x - sc.x
 			dy := b.pos.y - sc.y
-			if dx * dx + dy * dy <= r_sneak_sq {
+			if dx * dx + dy * dy <= r * r {
 				killed := damage_sneak(s, REFLECT_DAMAGE)
 				spawn_impact_particles(
 					particles,

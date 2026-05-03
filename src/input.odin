@@ -76,6 +76,30 @@ input_attack_held :: proc() -> bool {
 	return false
 }
 
+input_slow_time_held :: proc() -> bool {
+	if rl.IsKeyDown(.LEFT_SHIFT) {
+		return true
+	}
+	if rl.IsGamepadAvailable(GAMEPAD_ID) {
+		if rl.IsGamepadButtonDown(GAMEPAD_ID, .LEFT_TRIGGER_2) {
+			return true
+		}
+	}
+	return false
+}
+
+input_confirm_pressed :: proc() -> bool {
+	if rl.IsKeyPressed(.ENTER) {
+		return true
+	}
+	if rl.IsGamepadAvailable(GAMEPAD_ID) {
+		if rl.IsGamepadButtonPressed(GAMEPAD_ID, .RIGHT_FACE_DOWN) {
+			return true
+		}
+	}
+	return false
+}
+
 input_attack_released :: proc() -> bool {
 	if rl.IsMouseButtonReleased(.LEFT) {
 		return true

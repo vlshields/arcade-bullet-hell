@@ -1,5 +1,6 @@
 package game
 
+import "core:math"
 import rl "vendor:raylib"
 
 Player_Anim :: enum {
@@ -10,31 +11,34 @@ Player_Anim :: enum {
 }
 
 Player :: struct {
-	pos:              rl.Vector2,
-	anim:             Player_Anim,
-	facing_left:      bool,
-	frame_time:       f32,
-	frame:            int,
-	hp:               int,
-	stamina:          f32,
-	invuln_timer:     f32,
-	fire_timer:       f32,
-	hold_time:        f32,
-	charging:         bool,
-	charge:           f32,
-	charge_beam_idx:  int,
-	dash_timer:       f32,
-	dash_cooldown:    f32,
-	dash_velocity:    rl.Vector2,
-	dash_trail:       [PLAYER_DASH_TRAIL_LEN]rl.Vector2,
-	dash_trail_count: int,
-	dash_trail_fade:  f32,
-	tex_idle:         rl.Texture2D,
-	tex_down:         rl.Texture2D,
-	tex_up:           rl.Texture2D,
-	tex_side:         rl.Texture2D,
-	tex_reticle:      rl.Texture2D,
-	flash_shader:     rl.Shader,
+	pos:                rl.Vector2,
+	anim:               Player_Anim,
+	facing_left:        bool,
+	frame_time:         f32,
+	frame:              int,
+	hp:                 int,
+	stamina:            f32,
+	invuln_timer:       f32,
+	fire_timer:         f32,
+	hold_time:          f32,
+	charging:           bool,
+	charge:             f32,
+	charge_beam_idx:    int,
+	dash_timer:         f32,
+	dash_cooldown:      f32,
+	dash_velocity:      rl.Vector2,
+	dash_trail:         [PLAYER_DASH_TRAIL_LEN]rl.Vector2,
+	dash_trail_count:   int,
+	dash_trail_fade:    f32,
+	slow_time_unlocked: bool,
+	slow_time_active:   bool,
+	slow_time_phase:    f32,
+	tex_idle:           rl.Texture2D,
+	tex_down:           rl.Texture2D,
+	tex_up:             rl.Texture2D,
+	tex_side:           rl.Texture2D,
+	tex_reticle:        rl.Texture2D,
+	flash_shader:       rl.Shader,
 }
 
 init_player :: proc(p: ^Player) {
@@ -69,6 +73,56 @@ init_player :: proc(p: ^Player) {
 	p.dash_velocity = {0, 0}
 	p.dash_trail_count = 0
 	p.dash_trail_fade = 0
+	p.slow_time_unlocked = false
+	p.slow_time_active = false
+	p.slow_time_phase = 0
+}
+
+// Drains stamina while held and returns the dt that should be applied to
+// non-player entities (bullets, enemies, particles, background). Player input
+// and the player's own projectiles continue to use the raw dt.
+update_slow_time :: proc(p: ^Player, dt: f32) -> (world_dt: f32) {
+	p.slow_time_active = false
+	if !p.slow_time_unlocked {
+		return dt
+	}
+	if !input_slow_time_held() {
+		return dt
+	}
+	if p.stamina <= 0 {
+		return dt
+	}
+	p.slow_time_active = true
+	// Phase ticks at real time so the cue keeps a steady cadence.
+	p.slow_time_phase += SLOW_TIME_PULSE_HZ * math.TAU * dt
+	if p.slow_time_phase >= math.TAU {
+		p.slow_time_phase -= math.TAU
+	}
+	p.stamina -= SLOW_TIME_STAMINA_PER_SEC * dt
+	if p.stamina < 0 {
+		p.stamina = 0
+	}
+	return dt * SLOW_TIME_FACTOR
+}
+
+draw_slow_time_tint :: proc(p: ^Player) {
+	if !p.slow_time_active {
+		return
+	}
+	a := f32(SLOW_TIME_TINT_ALPHA_BASE) + math.sin(p.slow_time_phase) * f32(SLOW_TIME_TINT_ALPHA_PULSE)
+	if a < 0 {
+		a = 0
+	}
+	if a > 255 {
+		a = 255
+	}
+	rl.DrawRectangle(
+		0,
+		0,
+		SCREEN_WIDTH,
+		SCREEN_HEIGHT,
+		rl.Color{SLOW_TIME_TINT_R, SLOW_TIME_TINT_G, SLOW_TIME_TINT_B, u8(a)},
+	)
 }
 
 unload_player :: proc(p: ^Player) {
@@ -103,7 +157,7 @@ update_player :: proc(p: ^Player, dt: f32) {
 		}
 	}
 
-	if p.stamina < PLAYER_MAX_STAMINA {
+	if p.stamina < PLAYER_MAX_STAMINA && !p.slow_time_active {
 		p.stamina += PLAYER_STAMINA_RECOVER_RATE * dt
 		if p.stamina > PLAYER_MAX_STAMINA {
 			p.stamina = PLAYER_MAX_STAMINA
@@ -436,7 +490,7 @@ fire_laser :: proc(
 		if sc.y > pcy {
 			continue
 		}
-		if abs(sc.x - start.x) > SNEAK_HIT_RADIUS {
+		if abs(sc.x - start.x) > sneak_hit_radius(s) {
 			continue
 		}
 		killed := damage_sneak(s, LASER_DAMAGE)
@@ -505,7 +559,7 @@ fire_charge_beam :: proc(
 		if sc.y > b.start.y {
 			continue
 		}
-		if abs(sc.x - pcx) > half_width + SNEAK_HIT_RADIUS {
+		if abs(sc.x - pcx) > half_width + sneak_hit_radius(s) {
 			continue
 		}
 		killed := damage_sneak(s, damage)

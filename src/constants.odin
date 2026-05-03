@@ -35,6 +35,15 @@ PLAYER_MAX_STAMINA :: 50.0 // stamina
 PLAYER_DASH_STAMINA_COST :: 5.0 // stamina/dash
 PLAYER_STAMINA_RECOVER_RATE :: 2.0 // stamina/s (1 per 0.5s)
 
+SLOW_TIME_FACTOR :: 0.5 // multiplier (unitless) on world dt while slow-time is held
+SLOW_TIME_STAMINA_PER_SEC :: 10.0 // stamina/s drained while slow-time is held; ends when stamina hits 0
+SLOW_TIME_TINT_R :: 80 // [0..255] (cyan-blue cool wash over the world while slow-time is active)
+SLOW_TIME_TINT_G :: 180 // [0..255]
+SLOW_TIME_TINT_B :: 255 // [0..255]
+SLOW_TIME_TINT_ALPHA_BASE :: 55 // alpha [0..255] (midpoint of the breathing pulse)
+SLOW_TIME_TINT_ALPHA_PULSE :: 20 // alpha [0..255] (amplitude of the breathing pulse around the base)
+SLOW_TIME_PULSE_HZ :: 1.6 // Hz (breathing cadence for the tint pulse)
+
 ENEMY_COUNT :: 3 // count
 ENEMY_FRAME_W :: 16 // px (sprite source)
 ENEMY_FRAME_H :: 16 // px (sprite source)
@@ -55,7 +64,7 @@ ENEMY_HIT_RADIUS :: 10.0 // px
 ENEMY_HIT_FLASH_TIME :: 0.08 // s
 
 BOSS_TRIGGER_WAVE :: 6 // count (grunt waves cleared before Golgatha spawns)
-BOSS_MAX_HP :: 70 // hp
+BOSS_MAX_HP :: 110 // hp
 BOSS_FRAME_W :: 32 // px (sprite source)
 BOSS_FRAME_H :: 32 // px (sprite source)
 BOSS_FRAMES :: 5 // count
@@ -65,7 +74,7 @@ BOSS_HIT_RADIUS :: 16.0 // px
 BOSS_HIT_FLASH_TIME :: 0.08 // s
 BOSS_SPAWN_X :: 320.0 // px (anchor x; SCREEN_WIDTH / 2)
 BOSS_SPAWN_Y :: 60.0 // px (anchor y, fixed; sway only on x)
-BOSS_SWAY_AMPLITUDE :: 18.0 // px (subtle lateral offset from anchor)
+BOSS_SWAY_AMPLITUDE :: 38.0 // px 
 BOSS_SWAY_FREQ :: 0.8 // Hz (brisk side-to-side cadence)
 BOSS_FIRE_INTERVAL :: 0.033 // s (matches bhport reference: 2 frames @ 60fps)
 BOSS_BULLET_ROWS :: 6 // count (matches bhport reference default)
@@ -79,8 +88,8 @@ BOSS_HUD_BAR_H :: 8 // px
 BOSS_HUD_NAME_Y :: 6 // px (name top edge from screen top)
 BOSS_HUD_BAR_Y :: 22 // px (bar top edge from screen top)
 
-SNEAK_MAX :: 2 // count (cap on simultaneously active sneaks)
-SNEAK_SPAWN_CHANCE :: 0.5 // probability [0..1] (rolled on any enemy death)
+SNEAK_MAX :: 2 // count (cap on simultaneously active minor enemies — sneaks + cyclops share slots)
+SNEAK_SPAWN_CHANCE :: 0.5 // probability [0..1] (heads = sneak, tails = cyclops on level >= 2; rolled on any enemy death)
 SNEAK_FRAME_W :: 16 // px (sprite source)
 SNEAK_FRAME_H :: 16 // px (sprite source)
 SNEAK_FRAMES :: 1 // count
@@ -96,6 +105,28 @@ SNEAK_TELEPORT_INTERVAL :: 10.0 // s
 SNEAK_MAX_HP :: 6 // hp
 SNEAK_HIT_RADIUS :: 7.0 // px
 SNEAK_HIT_FLASH_TIME :: 0.08 // s
+
+CYCLOPS_MAX_HP :: 50 // hp
+CYCLOPS_FRAME_W :: 16 // px (sprite source)
+CYCLOPS_FRAME_H :: 16 // px (sprite source)
+CYCLOPS_FRAMES :: 9 // count
+CYCLOPS_ANIM_FPS :: 8.0 // frames/s
+CYCLOPS_DRAW_SCALE :: 2 // multiplier (unitless)
+CYCLOPS_HIT_RADIUS :: 10.0 // px (matches grunt)
+CYCLOPS_BULLET_SPEED :: 90.0 // px/s (matches sneak)
+CYCLOPS_CROSS_DURATION :: 5.5 // s (one full side-to-side pass)
+CYCLOPS_OFFSCREEN_MARGIN :: 24.0 // px (start/end x sit this far past the screen edge)
+CYCLOPS_Y_MIN :: 30.0 // px (random pass altitude lower bound)
+CYCLOPS_Y_MAX :: 220.0 // px (random pass altitude upper bound; keeps cyclops above typical player y)
+CYCLOPS_PATTERN_COUNT :: 3 // count (size of the bullet-pattern bag; rerolled each pass)
+CYCLOPS_AIMED_INTERVAL :: 0.7 // s (cadence of pattern 0: aimed fan)
+CYCLOPS_AIMED_BULLETS :: 5 // count
+CYCLOPS_AIMED_FAN_DEG :: 30.0 // deg (total fan width across the aimed burst)
+CYCLOPS_RING_INTERVAL :: 1.3 // s (cadence of pattern 1: full ring)
+CYCLOPS_RING_BULLETS :: 10 // count (evenly spaced around the cyclops)
+CYCLOPS_SPIRAL_INTERVAL :: 0.15 // s (cadence of pattern 2: rotating spiral arms)
+CYCLOPS_SPIRAL_ARMS :: 2 // count (opposing arms; mini-Golgatha feel)
+CYCLOPS_SPIRAL_INC_DEG :: 14.0 // deg/burst (rotation of spiral base angle)
 
 BULLET_LIFE :: 4.0 // s
 BULLET_RADIUS :: 3.0 // px
@@ -159,7 +190,9 @@ SCORE_KILL_REFLECT :: 25 // points (per enemy killed by a deflected bullet)
 SCORE_KILL_BOSS :: 100 // points (per boss kill)
 SCORE_FONT_SIZE :: 16 // px (top-left score readout)
 
-VICTORY_TITLE :: "Mission 1 Complete" // string
 VICTORY_TITLE_FONT_SIZE :: 24 // px
 VICTORY_SCORE_FONT_SIZE :: 16 // px
+VICTORY_PROMPT_FONT_SIZE :: 10 // px (mission-advance prompt below score)
 VICTORY_OVERLAY_ALPHA :: 180 // alpha [0..255]
+
+TRANSITION_HALF_DUR :: 0.6 // s (each half of mission transition: fade-out then fade-in, swap at midpoint)
