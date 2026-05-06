@@ -264,3 +264,18 @@ LEVEL2_BETWEEN_1CYC2SN_SNEAK_COUNT :: 2 // count (sneaks spawned alongside the c
 LEVEL2_BETWEEN_4SNEAKS_COUNT :: 4 // count (sneaks spawned at the start of the all-sneaks between-beat)
 LEVEL2_BETWEEN_3CYC_TARGET :: 3 // count (cyclops kills required to clear the 3-cyclops gauntlet)
 LEVEL2_BETWEEN_3CYC_SNEAK_INTERVAL :: 4.0 // s (cadence of streaming sneak spawns during the 3-cyclops gauntlet)
+LEVEL2_WAVES_TO_VICTORY :: 5 // count (level-2 phases the player must clear to trigger the victory screen; covers Wave1 → Between_1Cyc → Between_1Cyc_2Sneaks → Wave2 → Between_4Sneaks)
+
+MAX_LEVEL :: 2 // count (highest level with content; victory beyond this stays on the win screen until level 3 is wired in)
+
+PAUSE_OVERLAY_ALPHA :: 200 // alpha [0..255] (dim overlay drawn behind the pause menu)
+PAUSE_TITLE_FONT_SIZE :: 20 // px
+PAUSE_TITLE_Y :: 50 // px (top y of "PAUSED" title)
+PAUSE_MENU_TOP_Y :: 130 // px (top y of the first menu row beneath the title)
+PAUSE_ITEM_FONT_SIZE :: 14 // px (menu item / slider label font)
+PAUSE_ITEM_GAP :: 14 // px (vertical gap between menu rows)
+PAUSE_BODY_FONT_SIZE :: 10 // px (controls list body font)
+PAUSE_BODY_LINE_GAP :: 14 // px (vertical pitch between control rows)
+PAUSE_SLIDER_W :: 160 // px
+PAUSE_SLIDER_H :: 6 // px
+PAUSE_VOLUME_STEP :: 0.05 // multiplier (unitless; per left/right tap when adjusting volume sliders)

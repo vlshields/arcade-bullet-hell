@@ -31,6 +31,7 @@ reset_level2_pacing :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) {
 	enemies.level2_cyc_killed = 0
 	enemies.level2_prev_cyc_alive = 0
 	enemies.level2_sneak_timer = 0
+	enemies.level2_waves_complete = 0
 	sneaks.level2_phase = enemies.level2_phase
 }
 
@@ -157,6 +158,7 @@ advance_phase :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) {
 	}
 	enemies.level2_phase = next
 	enemies.level2_phase_started = false
+	enemies.level2_waves_complete += 1
 	sneaks.level2_phase = next
 }
 

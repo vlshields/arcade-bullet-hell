@@ -3,6 +3,8 @@ package game
 import rl "vendor:raylib"
 
 Audio :: struct {
+	music_volume:        f32,
+	sfx_volume:          f32,
 	theme:               rl.Music,
 	sfx_charged_beam:    rl.Sound,
 	sfx_charging_beam:   rl.Sound,
@@ -15,9 +17,12 @@ Audio :: struct {
 
 init_audio :: proc(a: ^Audio) {
 	rl.InitAudioDevice()
+	a.music_volume = MUSIC_VOLUME
+	a.sfx_volume = SFX_VOLUME
+
 	a.theme = rl.LoadMusicStream("assets/audio/soundtrack/themesong1.ogg")
 	a.theme.looping = true
-	rl.SetMusicVolume(a.theme, MUSIC_VOLUME)
+	rl.SetMusicVolume(a.theme, a.music_volume)
 	rl.PlayMusicStream(a.theme)
 
 	a.sfx_charged_beam = rl.LoadSound("assets/audio/sfx/player_charged_beam.wav")
@@ -28,13 +33,7 @@ init_audio :: proc(a: ^Audio) {
 	a.sfx_shrink_bullets = rl.LoadSound("assets/audio/sfx/player_shrink_bullets.wav")
 	a.sfx_takes_damage = rl.LoadSound("assets/audio/sfx/player_takes_damage.wav")
 
-	rl.SetSoundVolume(a.sfx_charged_beam, SFX_VOLUME)
-	rl.SetSoundVolume(a.sfx_charging_beam, SFX_VOLUME)
-	rl.SetSoundVolume(a.sfx_dash, SFX_VOLUME)
-	rl.SetSoundVolume(a.sfx_laser, SFX_VOLUME)
-	rl.SetSoundVolume(a.sfx_reflects_bullet, SFX_VOLUME)
-	rl.SetSoundVolume(a.sfx_shrink_bullets, SFX_VOLUME)
-	rl.SetSoundVolume(a.sfx_takes_damage, SFX_VOLUME)
+	apply_sfx_volume(a)
 }
 
 update_audio :: proc(a: ^Audio) {
@@ -52,6 +51,27 @@ unload_audio :: proc(a: ^Audio) {
 	rl.UnloadSound(a.sfx_shrink_bullets)
 	rl.UnloadSound(a.sfx_takes_damage)
 	rl.CloseAudioDevice()
+}
+
+set_music_volume :: proc(a: ^Audio, v: f32) {
+	a.music_volume = clamp(v, 0.0, 1.0)
+	rl.SetMusicVolume(a.theme, a.music_volume)
+}
+
+set_sfx_volume :: proc(a: ^Audio, v: f32) {
+	a.sfx_volume = clamp(v, 0.0, 1.0)
+	apply_sfx_volume(a)
+}
+
+@(private = "file")
+apply_sfx_volume :: proc(a: ^Audio) {
+	rl.SetSoundVolume(a.sfx_charged_beam, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_charging_beam, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_dash, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_laser, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_reflects_bullet, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_shrink_bullets, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_takes_damage, a.sfx_volume)
 }
 
 play_dash_sfx :: proc(a: ^Audio)          {rl.PlaySound(a.sfx_dash)}

@@ -34,6 +34,8 @@ Game_State :: struct {
 	victory:            bool,
 	choosing_upgrade:   bool,
 	upgrade_cursor:     int, // 0 = Slow Time, 1 = Dash Frenzy, 2 = Rapid Fire
+	paused:             bool,
+	pause:              Pause_Menu,
 }
 
 @(private = "file")
@@ -43,6 +45,8 @@ init :: proc() {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
 	rl.InitWindow(1280, 720, "bullethell")
 	rl.SetTargetFPS(60)
+
+	load_gamepad_mappings()
 
 	gs.render_target = rl.LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT)
 	rl.SetTextureFilter(gs.render_target.texture, .POINT)
@@ -94,108 +98,139 @@ update :: proc() {
 
 	dt := rl.GetFrameTime()
 
-	if gs.boss.boss.defeated && !gs.victory {
-		gs.victory = true
-		clear_world()
-		// First-time victory on level 1 forces the upgrade choice before the
-		// player can advance. Later levels skip straight to the press-to-continue
-		// prompt because there is no second upgrade to choose between.
-		if gs.level == 1 && gs.player.upgrade == .None {
-			gs.choosing_upgrade = true
-			gs.upgrade_cursor = 0
+	input_track_device()
+
+	// Pause toggle is handled here (when not paused) and inside update_pause
+	// (when paused). Tracking just_opened keeps the same ESC press from both
+	// opening and immediately closing the menu on the same frame.
+	just_opened_pause := false
+	if !gs.paused {
+		if input_pause_toggle_pressed() && !gs.victory && !gs.transitioning {
+			gs.paused = true
+			reset_pause_menu(&gs.pause)
+			just_opened_pause = true
 		}
 	}
+	if gs.paused && !just_opened_pause {
+		update_pause(&gs.pause, &gs.paused, &gs.audio)
+	}
 
-	if gs.victory && gs.choosing_upgrade {
-		step := input_menu_step_x()
-		if step != 0 {
-			gs.upgrade_cursor = (gs.upgrade_cursor + step + 3) % 3
-		}
-		if input_confirm_pressed() {
-			switch gs.upgrade_cursor {
-			case 0:
-				gs.player.upgrade = .Slow_Time
-			case 1:
-				gs.player.upgrade = .Dash_Frenzy
-			case 2:
-				gs.player.upgrade = .Rapid_Fire
+	if !gs.paused {
+		if gs.boss.boss.defeated && !gs.victory {
+			gs.victory = true
+			clear_world()
+			// First-time victory on level 1 forces the upgrade choice before the
+			// player can advance. Later levels skip straight to the press-to-continue
+			// prompt because there is no second upgrade to choose between.
+			if gs.level == 1 && gs.player.upgrade == .None {
+				gs.choosing_upgrade = true
+				gs.upgrade_cursor = 0
 			}
-			gs.choosing_upgrade = false
 		}
-	} else if gs.victory && !gs.transitioning && input_confirm_pressed() {
-		gs.transitioning = true
-		gs.transition_t = 0
-		gs.transition_swapped = false
-	}
 
-	if gs.transitioning {
-		gs.transition_t += dt
-		if !gs.transition_swapped && gs.transition_t >= TRANSITION_HALF_DUR {
-			advance_to_next_mission()
-			gs.transition_swapped = true
+		// Level 2 has no boss yet; victory triggers once the scripted phase sequence
+		// has been cleared LEVEL2_WAVES_TO_VICTORY times. Rewards / level 3 are TBD.
+		if gs.level == 2 &&
+		   gs.enemies.level2_waves_complete >= LEVEL2_WAVES_TO_VICTORY &&
+		   !gs.victory {
+			gs.victory = true
+			clear_world()
 		}
-		if gs.transition_t >= 2 * TRANSITION_HALF_DUR {
-			gs.transitioning = false
+
+		if gs.victory && gs.choosing_upgrade {
+			step := input_menu_step_x()
+			if step != 0 {
+				gs.upgrade_cursor = (gs.upgrade_cursor + step + 3) % 3
+			}
+			if input_confirm_pressed() {
+				switch gs.upgrade_cursor {
+				case 0:
+					gs.player.upgrade = .Slow_Time
+				case 1:
+					gs.player.upgrade = .Dash_Frenzy
+				case 2:
+					gs.player.upgrade = .Rapid_Fire
+				}
+				gs.choosing_upgrade = false
+			}
+		} else if gs.victory &&
+		   !gs.transitioning &&
+		   gs.level < MAX_LEVEL &&
+		   input_confirm_pressed() {
+			gs.transitioning = true
 			gs.transition_t = 0
+			gs.transition_swapped = false
 		}
-	}
 
-	// Slow-time only ticks during gameplay; outside gameplay world_dt = dt so
-	// the background scroll and timers run at full speed.
-	world_dt := dt
-	if !gs.victory && !gs.transitioning {
-		world_dt = update_slow_time(&gs.player, dt)
-	}
-
-	// Background keeps scrolling during victory + transition so the world looks alive.
-	update_background(&gs.background, world_dt)
-
-	if !gs.victory && !gs.transitioning {
-		if input_shrink_bomb_pressed() {
-			deploy_shrink_bomb(&gs.player, &gs.bullets, &gs.particles, &gs.audio)
+		if gs.transitioning {
+			gs.transition_t += dt
+			if !gs.transition_swapped && gs.transition_t >= TRANSITION_HALF_DUR {
+				advance_to_next_mission()
+				gs.transition_swapped = true
+			}
+			if gs.transition_t >= 2 * TRANSITION_HALF_DUR {
+				gs.transitioning = false
+				gs.transition_t = 0
+			}
 		}
-		update_player(&gs.player, &gs.missiles, &gs.audio, dt)
-		update_level2_pacing(&gs.enemies, &gs.sneaks, world_dt)
-		update_enemies(&gs.enemies, &gs.boss, &gs.bullets, &gs.player, world_dt)
-		update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, world_dt)
-		update_boss(&gs.boss, &gs.bullets, &gs.sneaks, world_dt)
-		update_player_attack(
-			&gs.player,
-			&gs.beams,
-			&gs.bullets,
-			&gs.enemies,
-			&gs.sneaks,
-			&gs.boss,
-			&gs.healthpacks,
-			&gs.particles,
-			&gs.audio,
-			&gs.score,
-			dt,
-		)
-		update_beams(&gs.beams, dt)
-		update_missiles(
-			&gs.missiles,
-			&gs.enemies,
-			&gs.sneaks,
-			&gs.boss,
-			&gs.healthpacks,
-			&gs.particles,
-			&gs.score,
-			dt,
-		)
-		update_particles(&gs.particles, world_dt)
-		update_bullets(&gs.bullets, &gs.enemies, &gs.sneaks, &gs.boss, dt, world_dt)
-		collide_bullets_player(&gs.bullets, &gs.player, &gs.audio)
-		collide_bullets_enemies(
-			&gs.bullets,
-			&gs.enemies,
-			&gs.sneaks,
-			&gs.boss,
-			&gs.healthpacks,
-			&gs.particles,
-			&gs.score,
-		)
-		update_healthpacks(&gs.healthpacks, &gs.player, world_dt)
+
+		// Slow-time only ticks during gameplay; outside gameplay world_dt = dt so
+		// the background scroll and timers run at full speed.
+		world_dt := dt
+		if !gs.victory && !gs.transitioning {
+			world_dt = update_slow_time(&gs.player, dt)
+		}
+
+		// Background keeps scrolling during victory + transition so the world looks alive.
+		update_background(&gs.background, world_dt)
+
+		if !gs.victory && !gs.transitioning {
+			if input_shrink_bomb_pressed() {
+				deploy_shrink_bomb(&gs.player, &gs.bullets, &gs.particles, &gs.audio)
+			}
+			update_player(&gs.player, &gs.missiles, &gs.audio, dt)
+			update_level2_pacing(&gs.enemies, &gs.sneaks, world_dt)
+			update_enemies(&gs.enemies, &gs.boss, &gs.bullets, &gs.player, world_dt)
+			update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, world_dt)
+			update_boss(&gs.boss, &gs.bullets, &gs.sneaks, world_dt)
+			update_player_attack(
+				&gs.player,
+				&gs.beams,
+				&gs.bullets,
+				&gs.enemies,
+				&gs.sneaks,
+				&gs.boss,
+				&gs.healthpacks,
+				&gs.particles,
+				&gs.audio,
+				&gs.score,
+				dt,
+			)
+			update_beams(&gs.beams, dt)
+			update_missiles(
+				&gs.missiles,
+				&gs.enemies,
+				&gs.sneaks,
+				&gs.boss,
+				&gs.healthpacks,
+				&gs.particles,
+				&gs.score,
+				dt,
+			)
+			update_particles(&gs.particles, world_dt)
+			update_bullets(&gs.bullets, &gs.enemies, &gs.sneaks, &gs.boss, dt, world_dt)
+			collide_bullets_player(&gs.bullets, &gs.player, &gs.audio)
+			collide_bullets_enemies(
+				&gs.bullets,
+				&gs.enemies,
+				&gs.sneaks,
+				&gs.boss,
+				&gs.healthpacks,
+				&gs.particles,
+				&gs.score,
+			)
+			update_healthpacks(&gs.healthpacks, &gs.player, world_dt)
+		}
 	}
 
 	rl.BeginTextureMode(gs.render_target)
@@ -217,13 +252,16 @@ update :: proc() {
 	draw_boss_hud(&gs.boss)
 	draw_score(gs.score)
 	if gs.victory {
-		draw_victory(gs.level, gs.score, gs.choosing_upgrade)
+		draw_victory(gs.level, gs.score, gs.choosing_upgrade, gs.level < MAX_LEVEL)
 		if gs.choosing_upgrade {
 			draw_upgrade_choice(gs.upgrade_cursor)
 		}
 	}
 	if gs.transitioning {
 		draw_transition(gs.transition_t)
+	}
+	if gs.paused {
+		draw_pause(&gs.pause, &gs.audio)
 	}
 	rl.EndTextureMode()
 
@@ -318,7 +356,7 @@ draw_score :: proc(score: int) {
 	rl.DrawText(text, HP_BAR_MARGIN, HP_BAR_MARGIN, SCORE_FONT_SIZE, rl.WHITE)
 }
 
-draw_victory :: proc(level: int, score: int, choosing: bool) {
+draw_victory :: proc(level: int, score: int, choosing: bool, has_next: bool) {
 	rl.DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, rl.Color{0, 0, 0, VICTORY_OVERLAY_ALPHA})
 
 	// While the upgrade picker is up, the title/score sit higher to leave room
@@ -342,11 +380,16 @@ draw_victory :: proc(level: int, score: int, choosing: bool) {
 	rl.DrawText(score_text, score_x + 1, score_y + 1, VICTORY_SCORE_FONT_SIZE, rl.BLACK)
 	rl.DrawText(score_text, score_x, score_y, VICTORY_SCORE_FONT_SIZE, rl.YELLOW)
 
-	if choosing {
+	if choosing || !has_next {
 		return
 	}
 
-	prompt := fmt.ctprintf("PRESS ENTER / A FOR MISSION %d", level + 1)
+	prompt: cstring
+	if input_last_device() == .Gamepad {
+		prompt = fmt.ctprintf("PRESS A FOR MISSION %d", level + 1)
+	} else {
+		prompt = fmt.ctprintf("PRESS ENTER FOR MISSION %d", level + 1)
+	}
 	prompt_w := rl.MeasureText(prompt, VICTORY_PROMPT_FONT_SIZE)
 	prompt_x: i32 = (SCREEN_WIDTH - prompt_w) / 2
 	prompt_y: i32 = score_y + VICTORY_SCORE_FONT_SIZE + 16
@@ -369,7 +412,7 @@ draw_upgrade_choice :: proc(cursor: int) {
 		left_x,
 		UPGRADE_CARDS_Y,
 		"SLOW TIME",
-		"HOLD SHIFT/LT",
+		input_hint("HOLD SHIFT", "HOLD LT"),
 		"BENDS WORLD TO HALF SPEED",
 		"DRAINS STAMINA WHILE HELD",
 		rl.Color{80, 180, 255, 255},
@@ -396,7 +439,10 @@ draw_upgrade_choice :: proc(cursor: int) {
 		cursor == 2,
 	)
 
-	hint := cstring("LEFT/RIGHT TO PICK   ENTER TO CONFIRM")
+	hint := input_hint(
+		"LEFT/RIGHT TO PICK   ENTER TO CONFIRM",
+		"DPAD TO PICK   A TO CONFIRM",
+	)
 	hint_w := rl.MeasureText(hint, VICTORY_PROMPT_FONT_SIZE)
 	hint_x: i32 = (i32(SCREEN_WIDTH) - hint_w) / 2
 	hint_y: i32 = UPGRADE_CARDS_Y + UPGRADE_CARD_H + 10

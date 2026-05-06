@@ -47,11 +47,12 @@ Enemy_Pool :: struct {
 	boost_applied: bool,
 	// Level-2 pacing state. See level2.odin. Only consulted when level >= 2;
 	// level 1 keeps the original waves_cleared / boss-trigger flow.
-	level2_phase:          Level2_Phase,
-	level2_phase_started:  bool,
-	level2_cyc_killed:     int,
-	level2_prev_cyc_alive: int,
-	level2_sneak_timer:    f32,
+	level2_phase:           Level2_Phase,
+	level2_phase_started:   bool,
+	level2_cyc_killed:      int,
+	level2_prev_cyc_alive:  int,
+	level2_sneak_timer:     f32,
+	level2_waves_complete:  int,
 }
 
 init_enemies :: proc(pool: ^Enemy_Pool) {
