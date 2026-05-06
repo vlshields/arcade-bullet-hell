@@ -5,6 +5,8 @@ SCREEN_HEIGHT :: 360 // px
 
 BG_LAYERS :: 3 // count
 
+MUSIC_VOLUME :: 0.2 // multiplier [0..1] (default volume for the looping theme song)
+
 GAMEPAD_ID :: 0 // index
 STICK_DEADZONE :: 0.2 // normalized axis magnitude [0..1]
 
@@ -34,6 +36,7 @@ PLAYER_DASH_TRAIL_MAX_ALPHA :: 0.65 // multiplier (cap on newest afterimage alph
 PLAYER_MAX_STAMINA :: 50.0 // stamina
 PLAYER_DASH_STAMINA_COST :: 5.0 // stamina/dash
 PLAYER_STAMINA_RECOVER_RATE :: 2.0 // stamina/s (1 per 0.5s)
+DASH_FRENZY_EXTRA_STAMINA_COST :: 2.0 // stamina/dash (added on top of base when Dash Frenzy upgrade is active)
 
 SLOW_TIME_FACTOR :: 0.5 // multiplier (unitless) on world dt while slow-time is held
 SLOW_TIME_STAMINA_PER_SEC :: 10.0 // stamina/s drained while slow-time is held; ends when stamina hits 0
@@ -103,7 +106,8 @@ BOSS_HUD_BAR_H :: 8 // px
 BOSS_HUD_NAME_Y :: 6 // px (name top edge from screen top)
 BOSS_HUD_BAR_Y :: 22 // px (bar top edge from screen top)
 
-SNEAK_MAX :: 2 // count (cap on simultaneously active minor enemies — sneaks + cyclops share slots)
+SNEAK_MAX :: 6 // count (hard cap on simultaneously active minor enemies — sneaks + cyclops share slots; sized for the level-2 "between" phases where 4 sneaks or 1 cyclops + sneaks are scripted at once)
+LEVEL1_SNEAK_CAP :: 2 // count (effective level-1 cap; preserves prior level-1 difficulty since the pool was historically size 2)
 SNEAK_SPAWN_CHANCE :: 0.5 // probability [0..1] (heads = sneak, tails = cyclops on level >= 2; rolled on any enemy death)
 SNEAK_FRAME_W :: 16 // px (sprite source)
 SNEAK_FRAME_H :: 16 // px (sprite source)
@@ -145,7 +149,13 @@ CYCLOPS_SPIRAL_INC_DEG :: 14.0 // deg/burst (rotation of spiral base angle)
 
 BULLET_LIFE :: 4.0 // s
 BULLET_RADIUS :: 3.0 // px
-MAX_BULLETS :: 256 // count (pool capacity)
+MAX_BULLETS :: 512 // count (pool capacity; sized to absorb sustained Rapid_Fire bursts (~120 in flight) on top of enemy patterns)
+
+SHRINK_BOMBS_PER_LEVEL :: 3 // count (player's shrink-bomb stock; reset at the start of every level)
+SHRINK_BOMB_DURATION :: 0.4 // s (time for an enemy bullet caught in the bomb to shrink to nothing)
+SHRINK_BOMB_BURST_PARTICLES :: 24 // count (player-centered particle burst when a bomb deploys)
+SHRINK_BOMB_HUD_DOT_R :: 3.0 // px (radius of each remaining-bomb pip drawn on the HUD)
+SHRINK_BOMB_HUD_DOT_GAP :: 4 // px (horizontal gap between HUD pips)
 
 REFLECT_HOMING_RATE :: 1.1 // 1/s (exponential lerp rate of reflected bullet velocity toward nearest enemy)
 REFLECT_DAMAGE :: 8 // hp/hit
@@ -177,6 +187,29 @@ CHARGE_BEAM_GATHER_DIST_RANGE :: 20.0 // px (gather particle spawn distance rand
 CHARGE_BEAM_GATHER_LIFE :: 0.2 // s (gather particle lifetime)
 MAX_BEAMS :: 16 // count (pool capacity)
 
+RAPID_FIRE_INTERVAL :: 0.05 // s (between rapid-fire shots while attack is held; 20 shots/s for bullet-hell density)
+RAPID_FIRE_DAMAGE :: 3 // hp/hit (per rapid-fire bullet on enemy)
+RAPID_FIRE_SPEED :: 234.0 // px/s
+RAPID_FIRE_LIFE :: 4.0 // s (per-projectile lifespan)
+RAPID_FIRE_RADIUS :: 1.0 // px (core circle)
+RAPID_FIRE_GLOW_MULT :: 3.5 // multiplier (glow circle radius vs core; matches LASER_GLOW_MULT family)
+
+DASH_FRENZY_MISSILES_PER_DASH :: 2 // count (homing missiles launched on each dash while Dash Frenzy is active)
+DASH_FRENZY_LAUNCH_FAN_DEG :: 70.0 // deg (total spread between the two missiles, centered on the dash direction)
+MISSILE_DAMAGE :: 8 // hp/hit (per missile impact on enemy/sneak/boss)
+MISSILE_SPEED :: 220.0 // px/s (constant cruise speed; missiles always travel at this speed)
+MISSILE_LIFE :: 2.5 // s (auto-detonate after this if no target hit)
+MISSILE_HIT_RADIUS :: 4.0 // px (circle radius used for collision against enemies)
+MISSILE_TURN_RATE :: 6.0 // 1/s (exponential lerp rate of velocity toward the homing target)
+MISSILE_INITIAL_BLIND_TIME :: 0.05 // s (no homing during launch fan-out so the spread is visible)
+MISSILE_TRAIL_LEN :: 14 // count (past-position samples kept per missile for trail rendering)
+MISSILE_TRAIL_SAMPLE_INTERVAL :: 0.018 // s (gap between trail samples; smaller = denser trail)
+MISSILE_GLOW_LAYERS :: 4 // count (concentric glow circles drawn per missile body and trail node)
+MISSILE_BODY_RADIUS :: 2.5 // px (innermost bright core of the missile body)
+MISSILE_TRAIL_NODE_RADIUS :: 1.8 // px (innermost radius of trail node before glow scaling)
+MISSILE_IMPACT_PARTICLES :: 8 // count (per missile detonation; reuses spawn_impact_particles)
+MAX_MISSILES :: 24 // count (pool capacity; sized for back-to-back dashes)
+
 HEALTHPACK_MAX :: 8 // count (pool capacity)
 HEALTHPACK_DROP_CHANCE :: 0.15 // probability [0..1] (rolled per enemy/boss kill)
 HEALTHPACK_HEAL :: 10 // hp (per pickup; clamped to PLAYER_MAX_HP)
@@ -184,6 +217,7 @@ HEALTHPACK_RADIUS :: 6.0 // px (collision; sums with PLAYER_HIT_RADIUS for picku
 HEALTHPACK_ARM :: 4.5 // px (cross arm half-length at pulse=1)
 HEALTHPACK_THICK :: 3.0 // px (cross bar thickness)
 HEALTHPACK_PULSE_HZ :: 1.5 // Hz (visibility pulse cadence)
+HEALTHPACK_DRIFT_SPEED :: 22.0 // px/s (downward drift; pack expires when it leaves the bottom of the screen — players lose their chance if they don't grab it in time)
 
 PARTICLE_GRAVITY :: 200.0 // px/s²
 PARTICLE_SPEED_MIN :: 50.0 // px/s
@@ -202,6 +236,7 @@ STATUS_BAR_GAP :: 2 // px (vertical gap between stacked status bars)
 SCORE_KILL_LASER :: 10 // points (per enemy killed by the rapid laser)
 SCORE_KILL_CHARGE :: 15 // points (per enemy killed by the released charge beam)
 SCORE_KILL_REFLECT :: 25 // points (per enemy killed by a deflected bullet)
+SCORE_KILL_RAPID :: 10 // points (per enemy killed by a rapid-fire bullet)
 SCORE_KILL_BOSS :: 100 // points (per boss kill)
 SCORE_FONT_SIZE :: 16 // px (top-left score readout)
 
@@ -210,4 +245,19 @@ VICTORY_SCORE_FONT_SIZE :: 16 // px
 VICTORY_PROMPT_FONT_SIZE :: 10 // px (mission-advance prompt below score)
 VICTORY_OVERLAY_ALPHA :: 180 // alpha [0..255]
 
+UPGRADE_TITLE_Y :: 30 // px (top y of MISSION COMPLETE title while choosing)
+UPGRADE_HEADER_Y :: 100 // px (top y of "CHOOSE YOUR UPGRADE" header)
+UPGRADE_HEADER_FONT_SIZE :: 14 // px
+UPGRADE_CARDS_Y :: 130 // px (top y of upgrade card row)
+UPGRADE_CARD_W :: 180 // px
+UPGRADE_CARD_H :: 110 // px
+UPGRADE_CARD_GAP :: 24 // px (horizontal gap between cards)
+UPGRADE_NAME_FONT_SIZE :: 14 // px
+UPGRADE_BODY_FONT_SIZE :: 8 // px (description lines inside cards)
+
 TRANSITION_HALF_DUR :: 0.6 // s (each half of mission transition: fade-out then fade-in, swap at midpoint)
+
+LEVEL2_BETWEEN_1CYC2SN_SNEAK_COUNT :: 2 // count (sneaks spawned alongside the cyclops in the second between-beat)
+LEVEL2_BETWEEN_4SNEAKS_COUNT :: 4 // count (sneaks spawned at the start of the all-sneaks between-beat)
+LEVEL2_BETWEEN_3CYC_TARGET :: 3 // count (cyclops kills required to clear the 3-cyclops gauntlet)
+LEVEL2_BETWEEN_3CYC_SNEAK_INTERVAL :: 4.0 // s (cadence of streaming sneak spawns during the 3-cyclops gauntlet)

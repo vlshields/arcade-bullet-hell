@@ -10,6 +10,15 @@ Player_Anim :: enum {
 	Move_Side,
 }
 
+// Mutually-exclusive ability the player picks between missions. The mid-game
+// choice screen sets this; gameplay code branches on it.
+Player_Upgrade :: enum {
+	None,
+	Slow_Time,
+	Dash_Frenzy,
+	Rapid_Fire,
+}
+
 Player :: struct {
 	pos:                rl.Vector2,
 	anim:               Player_Anim,
@@ -30,9 +39,10 @@ Player :: struct {
 	dash_trail:         [PLAYER_DASH_TRAIL_LEN]rl.Vector2,
 	dash_trail_count:   int,
 	dash_trail_fade:    f32,
-	slow_time_unlocked: bool,
+	upgrade:            Player_Upgrade,
 	slow_time_active:   bool,
 	slow_time_phase:    f32,
+	shrink_bombs:       int,
 	tex_idle:           rl.Texture2D,
 	tex_down:           rl.Texture2D,
 	tex_up:             rl.Texture2D,
@@ -73,9 +83,21 @@ init_player :: proc(p: ^Player) {
 	p.dash_velocity = {0, 0}
 	p.dash_trail_count = 0
 	p.dash_trail_fade = 0
-	p.slow_time_unlocked = false
+	p.upgrade = .None
 	p.slow_time_active = false
 	p.slow_time_phase = 0
+	p.shrink_bombs = SHRINK_BOMBS_PER_LEVEL
+}
+
+deploy_shrink_bomb :: proc(p: ^Player, bullets: ^Bullet_Pool, particles: ^Particle_Pool) {
+	if p.shrink_bombs <= 0 {
+		return
+	}
+	p.shrink_bombs -= 1
+	shrink_all_enemy_bullets(bullets)
+	pcx := p.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
+	pcy := p.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
+	spawn_impact_particles(particles, {pcx, pcy}, rl.WHITE, SHRINK_BOMB_BURST_PARTICLES)
 }
 
 // Drains stamina while held and returns the dt that should be applied to
@@ -83,7 +105,7 @@ init_player :: proc(p: ^Player) {
 // and the player's own projectiles continue to use the raw dt.
 update_slow_time :: proc(p: ^Player, dt: f32) -> (world_dt: f32) {
 	p.slow_time_active = false
-	if !p.slow_time_unlocked {
+	if p.upgrade != .Slow_Time {
 		return dt
 	}
 	if !input_slow_time_held() {
@@ -134,7 +156,14 @@ unload_player :: proc(p: ^Player) {
 	rl.UnloadShader(p.flash_shader)
 }
 
-update_player :: proc(p: ^Player, dt: f32) {
+dash_stamina_cost :: proc(p: ^Player) -> f32 {
+	if p.upgrade == .Dash_Frenzy {
+		return PLAYER_DASH_STAMINA_COST + DASH_FRENZY_EXTRA_STAMINA_COST
+	}
+	return PLAYER_DASH_STAMINA_COST
+}
+
+update_player :: proc(p: ^Player, missiles: ^Missile_Pool, dt: f32) {
 	move := input_move()
 
 	if p.invuln_timer > 0 {
@@ -166,7 +195,8 @@ update_player :: proc(p: ^Player, dt: f32) {
 
 	pcx := p.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
 	pcy := p.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
-	if p.dash_timer <= 0 && p.dash_cooldown <= 0 && p.stamina >= PLAYER_DASH_STAMINA_COST {
+	dash_cost := dash_stamina_cost(p)
+	if p.dash_timer <= 0 && p.dash_cooldown <= 0 && p.stamina >= dash_cost {
 		pressed, dir := input_dash({pcx, pcy}, get_mouse_game_pos())
 		if pressed && rl.Vector2Length(dir) > 0.001 {
 			p.dash_timer = PLAYER_DASH_DURATION
@@ -174,7 +204,10 @@ update_player :: proc(p: ^Player, dt: f32) {
 			p.dash_velocity = dir * PLAYER_DASH_SPEED
 			p.dash_trail_count = 0
 			p.dash_trail_fade = PLAYER_DASH_TRAIL_FADE_TIME
-			p.stamina -= PLAYER_DASH_STAMINA_COST
+			p.stamina -= dash_cost
+			if p.upgrade == .Dash_Frenzy {
+				launch_dash_missiles(missiles, {pcx, pcy}, dir)
+			}
 		}
 	}
 
@@ -350,6 +383,18 @@ draw_player_hud :: proc(p: ^Player) {
 		rl.DrawRectangle(x, stam_y, stam_fill_w, HP_BAR_H, rl.Color{80, 180, 240, 255})
 	}
 	rl.DrawRectangleLines(x, stam_y, HP_BAR_W, HP_BAR_H, rl.WHITE)
+
+	pip_cy := f32(stam_y) + f32(HP_BAR_H) * 0.5
+	pip_x := f32(x + HP_BAR_W) + f32(SHRINK_BOMB_HUD_DOT_GAP) + SHRINK_BOMB_HUD_DOT_R
+	for i in 0 ..< SHRINK_BOMBS_PER_LEVEL {
+		c := rl.Vector2{pip_x, pip_cy}
+		if i < p.shrink_bombs {
+			rl.DrawCircleV(c, SHRINK_BOMB_HUD_DOT_R, rl.WHITE)
+		} else {
+			rl.DrawCircleLinesV(c, SHRINK_BOMB_HUD_DOT_R, rl.Color{120, 120, 120, 255})
+		}
+		pip_x += 2 * SHRINK_BOMB_HUD_DOT_R + f32(SHRINK_BOMB_HUD_DOT_GAP)
+	}
 }
 
 damage_player :: proc(p: ^Player, amount: int) {
@@ -366,6 +411,7 @@ damage_player :: proc(p: ^Player, amount: int) {
 update_player_attack :: proc(
 	p: ^Player,
 	beams: ^Beam_Pool,
+	bullets: ^Bullet_Pool,
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
 	boss: ^Boss_Pool,
@@ -395,14 +441,23 @@ update_player_attack :: proc(
 		p.hold_time = 0
 	}
 
-	// Original laser: fires while held, on the LASER_FIRE_INTERVAL cadence.
+	// Rapid Fire upgrade replaces the laser with a single straight-up projectile
+	// stream at higher cadence. Charge beam logic below still runs so a long hold
+	// charges and releases as before.
 	if held && p.fire_timer <= 0 {
-		p.fire_timer = LASER_FIRE_INTERVAL
-		fire_laser(start, end, pcy, enemies, sneaks, boss, packs, particles, beams, score)
+		if p.upgrade == .Rapid_Fire {
+			p.fire_timer = RAPID_FIRE_INTERVAL
+			fire_rapid_burst(bullets, start)
+		} else {
+			p.fire_timer = LASER_FIRE_INTERVAL
+			fire_laser(start, end, pcy, enemies, sneaks, boss, packs, particles, beams, score)
+		}
 	}
 
-	// Once the player has held long enough, begin charging.
+	// Once the player has held long enough, begin charging. Rapid Fire replaces
+	// the entire hold-to-attack mechanic, so the charge beam is unavailable then.
 	if held &&
+	   p.upgrade != .Rapid_Fire &&
 	   !p.charging &&
 	   p.hold_time >= CHARGE_BEAM_HOLD_DELAY &&
 	   p.stamina >= CHARGE_BEAM_FULL_STAMINA_COST {
@@ -445,6 +500,11 @@ update_player_attack :: proc(
 		p.charge_beam_idx = -1
 		p.charge = 0
 	}
+}
+
+fire_rapid_burst :: proc(bullets: ^Bullet_Pool, start: rl.Vector2) {
+	vel := rl.Vector2{0, -RAPID_FIRE_SPEED}
+	spawn_bullet(bullets, start, vel, rl.RED, .Rapid_Fire)
 }
 
 fire_laser :: proc(

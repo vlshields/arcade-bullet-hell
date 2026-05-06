@@ -43,6 +43,9 @@ Sneak_Pool :: struct {
 	cyclops_tex:  rl.Texture2D,
 	flash_shader: rl.Shader,
 	level:        int,
+	// Mirror of Enemy_Pool.level2_phase, kept in sync so try_spawn_sneak can
+	// gate kill-driven minor spawns without needing a back-reference to Enemy_Pool.
+	level2_phase: Level2_Phase,
 }
 
 init_sneaks :: proc(pool: ^Sneak_Pool) {
@@ -95,21 +98,60 @@ random_viewport_point :: proc() -> rl.Vector2 {
 	return {x, y}
 }
 
-// Roll the 50/50 spawn dice on enemy death. Heads spawns a sneak; tails spawns
-// a cyclops on level >= 2 (no-op on level 1, preserving level-1 cadence).
-// Sneak and cyclops share the pool's slots; the cap is total (SNEAK_MAX).
+// Effective active-minor-enemy cap for the current level. Level 1 keeps the
+// historical cap of 2 even though the underlying pool can hold more, so that
+// bumping SNEAK_MAX for the level-2 scripted phases doesn't accidentally
+// inflate level-1 difficulty.
+effective_sneak_cap :: proc(pool: ^Sneak_Pool) -> int {
+	if pool.level <= 1 {
+		return LEVEL1_SNEAK_CAP
+	}
+	return SNEAK_MAX
+}
+
+// Kill-driven minor-enemy spawn funnel. Behavior depends on the current pacing
+// phase (see Level2_Phase). Level 1 retains the historical 50% sneak / 50% no-op
+// roll. Scripted level-2 phases do nothing here — they spawn from level2.odin
+// directly.
 try_spawn_sneak :: proc(pool: ^Sneak_Pool) {
-	if rand.float32() < SNEAK_SPAWN_CHANCE {
-		spawn_sneak(pool)
-	} else {
-		try_spawn_cyclops(pool)
+	if pool.level < 2 {
+		// Level 1: 50% sneak, 50% nothing (cyclops never spawn on level 1).
+		if rand.float32() < SNEAK_SPAWN_CHANCE {
+			force_spawn_sneak(pool)
+		}
+		return
+	}
+	switch pool.level2_phase {
+	case .Wave1_WG_Only,
+	     .Between_1Cyclops,
+	     .Between_1Cyc_2Sneaks,
+	     .Between_4Sneaks:
+		// Scripted-only phases: kills must not bleed extra spawns in.
+		return
+	case .Wave2_WG_Sneaks:
+		// "Weird guys and sneaks" — only sneaks here, no cyclops.
+		if rand.float32() < SNEAK_SPAWN_CHANCE {
+			force_spawn_sneak(pool)
+		}
+	case .Between_3Cyc_Sneaks:
+		// Cyclops are spawned by the pacing manager; kills here may mint sneaks.
+		if rand.float32() < SNEAK_SPAWN_CHANCE {
+			force_spawn_sneak(pool)
+		}
+	case .Free_For_All:
+		// Original level-2 mix.
+		if rand.float32() < SNEAK_SPAWN_CHANCE {
+			force_spawn_sneak(pool)
+		} else {
+			force_spawn_cyclops(pool)
+		}
 	}
 }
 
-@(private = "file")
-spawn_sneak :: proc(pool: ^Sneak_Pool) {
+force_spawn_sneak :: proc(pool: ^Sneak_Pool) {
+	cap := effective_sneak_cap(pool)
 	slot := -1
-	for i in 0 ..< SNEAK_MAX {
+	for i in 0 ..< cap {
 		if !pool.sneaks[i].active {
 			slot = i
 			break
@@ -134,19 +176,18 @@ spawn_sneak :: proc(pool: ^Sneak_Pool) {
 	}
 }
 
-@(private = "file")
-try_spawn_cyclops :: proc(pool: ^Sneak_Pool) {
-	if pool.level < 2 {
-		return
-	}
+// Forced cyclops spawn. Bypasses the level guard (caller is responsible for
+// gating) but keeps the "only one cyclops alive at a time" rule because two
+// cyclops is too much screen real estate for the existing bullet patterns.
+force_spawn_cyclops :: proc(pool: ^Sneak_Pool) {
+	cap := effective_sneak_cap(pool)
 	slot := -1
 	for i in 0 ..< SNEAK_MAX {
 		s := &pool.sneaks[i]
 		if s.active && s.kind == .Cyclops {
-			// Only one cyclops alive at a time.
 			return
 		}
-		if !s.active && slot < 0 {
+		if !s.active && slot < 0 && i < cap {
 			slot = i
 		}
 	}

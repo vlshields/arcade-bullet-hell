@@ -88,6 +88,18 @@ input_slow_time_held :: proc() -> bool {
 	return false
 }
 
+input_shrink_bomb_pressed :: proc() -> bool {
+	if rl.IsKeyPressed(.F) {
+		return true
+	}
+	if rl.IsGamepadAvailable(GAMEPAD_ID) {
+		if rl.IsGamepadButtonPressed(GAMEPAD_ID, .RIGHT_FACE_LEFT) {
+			return true
+		}
+	}
+	return false
+}
+
 input_confirm_pressed :: proc() -> bool {
 	if rl.IsKeyPressed(.ENTER) {
 		return true
@@ -98,6 +110,28 @@ input_confirm_pressed :: proc() -> bool {
 		}
 	}
 	return false
+}
+
+// Edge-detected horizontal nudge for menus. Returns -1 / 0 / +1 the frame the
+// user taps left/right; held keys do not auto-repeat. Uses dpad + face buttons
+// on gamepad; the analog stick is intentionally excluded so a held stick during
+// gameplay does not flicker the menu cursor.
+input_menu_step_x :: proc() -> int {
+	if rl.IsKeyPressed(.A) || rl.IsKeyPressed(.LEFT) {
+		return -1
+	}
+	if rl.IsKeyPressed(.D) || rl.IsKeyPressed(.RIGHT) {
+		return 1
+	}
+	if rl.IsGamepadAvailable(GAMEPAD_ID) {
+		if rl.IsGamepadButtonPressed(GAMEPAD_ID, .LEFT_FACE_LEFT) {
+			return -1
+		}
+		if rl.IsGamepadButtonPressed(GAMEPAD_ID, .LEFT_FACE_RIGHT) {
+			return 1
+		}
+	}
+	return 0
 }
 
 input_attack_released :: proc() -> bool {

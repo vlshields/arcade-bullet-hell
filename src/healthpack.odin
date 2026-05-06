@@ -46,6 +46,15 @@ update_healthpacks :: proc(pool: ^HealthPack_Pool, player: ^Player, dt: f32) {
 		if !h.active {
 			continue
 		}
+		h.pos.y += HEALTHPACK_DRIFT_SPEED * dt
+		// Once the pack scrolls past the bottom edge (with a small slack so the
+		// pulsing glow finishes off-screen rather than popping mid-screen), the
+		// chance is gone.
+		if h.pos.y - HEALTHPACK_ARM > f32(SCREEN_HEIGHT) {
+			h.active = false
+			continue
+		}
+
 		dx := h.pos.x - pcx
 		dy := h.pos.y - pcy
 		if dx * dx + dy * dy <= r_sq {

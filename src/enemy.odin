@@ -45,6 +45,13 @@ Enemy_Pool :: struct {
 	waves_cleared: int,
 	fire_interval: f32,
 	boost_applied: bool,
+	// Level-2 pacing state. See level2.odin. Only consulted when level >= 2;
+	// level 1 keeps the original waves_cleared / boss-trigger flow.
+	level2_phase:          Level2_Phase,
+	level2_phase_started:  bool,
+	level2_cyc_killed:     int,
+	level2_prev_cyc_alive: int,
+	level2_sneak_timer:    f32,
 }
 
 init_enemies :: proc(pool: ^Enemy_Pool) {
@@ -95,6 +102,16 @@ spawn_grunt_wave :: proc(pool: ^Enemy_Pool) {
 			data       = Grunt_Data{anchor = anchor, angle = angle, radius = radius},
 		}
 	}
+}
+
+// Wipes out any currently-alive enemies in the pool, then refills with a fresh
+// weirdguy wave. Used both by the original wave-respawn path and by the level-2
+// pacing manager when it enters a "weirdguys this beat" phase.
+spawn_weirdguys_for_phase :: proc(pool: ^Enemy_Pool) {
+	for i in 0 ..< ENEMY_COUNT {
+		pool.enemies[i].active = false
+	}
+	spawn_weirdguy_wave(pool)
 }
 
 @(private = "file")
@@ -165,11 +182,14 @@ update_enemies :: proc(
 			break
 		}
 	}
-	if !any_alive {
+	if !any_alive && pool.level < 2 {
+		// Level 1 only: classic wave/boss flow. Level 2+ wave timing is owned
+		// entirely by update_level2_pacing (see level2.odin), which decides
+		// when to mint the next weirdguy wave or scripted minor-enemy beat.
 		// Suppress respawns while Golgatha is on the field; sneaks still flow.
 		if !boss.boss.active {
 			pool.waves_cleared += 1
-			if pool.waves_cleared == BOSS_TRIGGER_WAVE && pool.level < 2 {
+			if pool.waves_cleared == BOSS_TRIGGER_WAVE {
 				spawn_boss(boss)
 			} else {
 				if !pool.boost_applied && pool.waves_cleared >= ENEMY_WAVE_BOOST_THRESHOLD {

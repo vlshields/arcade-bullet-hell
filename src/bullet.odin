@@ -3,13 +3,29 @@ package game
 import "core:math"
 import rl "vendor:raylib"
 
+// Bullets are pooled and tagged. Enemy bullets damage the player; Reflected
+// bullets are former-enemy bullets the player turned by dashing through them
+// and now home toward enemies; Rapid_Fire bullets are spawned by the player's
+// Rapid Fire upgrade — they fly straight up at constant velocity and use the
+// laser color palette.
+Bullet_Kind :: enum {
+	Enemy,
+	Reflected,
+	Rapid_Fire,
+}
+
 Bullet :: struct {
-	pos:         rl.Vector2,
-	vel:         rl.Vector2,
-	life:        f32,
-	color:       rl.Color,
-	active:      bool,
-	from_player: bool,
+	pos:       rl.Vector2,
+	vel:       rl.Vector2,
+	life:      f32,
+	color:     rl.Color,
+	kind:      Bullet_Kind,
+	active:    bool,
+	// Shrink-bomb state. Only set on Enemy bullets caught in a bomb. Ramps 0->1
+	// over SHRINK_BOMB_DURATION; while shrinking, hit radius and visuals scale by
+	// (1 - shrink_t), and the bullet deactivates once shrink_t hits 1.
+	shrinking: bool,
+	shrink_t:  f32,
 }
 
 Bullet_Pool :: struct {
@@ -20,17 +36,21 @@ spawn_bullet :: proc(
 	pool: ^Bullet_Pool,
 	pos, vel: rl.Vector2,
 	color: rl.Color = rl.RED,
-	from_player := false,
+	kind: Bullet_Kind = .Enemy,
 ) {
+	life: f32 = BULLET_LIFE
+	if kind == .Rapid_Fire {
+		life = RAPID_FIRE_LIFE
+	}
 	for i in 0 ..< MAX_BULLETS {
 		if !pool.bullets[i].active {
 			pool.bullets[i] = Bullet {
-				pos         = pos,
-				vel         = vel,
-				life        = BULLET_LIFE,
-				color       = color,
-				active      = true,
-				from_player = from_player,
+				pos    = pos,
+				vel    = vel,
+				life   = life,
+				color  = color,
+				kind   = kind,
+				active = true,
 			}
 			return
 		}
@@ -51,7 +71,8 @@ update_bullets :: proc(
 		if !b.active {
 			continue
 		}
-		if b.from_player {
+		// Only Reflected bullets home; Rapid_Fire flies straight by design.
+		if b.kind == .Reflected {
 			best_target: rl.Vector2
 			best_d_sq := f32(1e18)
 			found := false
@@ -109,12 +130,35 @@ update_bullets :: proc(
 				}
 			}
 		}
-		use_dt := b.from_player ? dt : world_dt
+		// Player-side projectiles ignore slow-time so the player's offense stays
+		// crisp regardless of the world tempo.
+		use_dt := b.kind == .Enemy ? world_dt : dt
 		b.pos += b.vel * use_dt
 		b.life -= use_dt
 		if b.life <= 0 {
 			b.active = false
+			continue
 		}
+		if b.shrinking {
+			b.shrink_t += use_dt / SHRINK_BOMB_DURATION
+			if b.shrink_t >= 1 {
+				b.active = false
+			}
+		}
+	}
+}
+
+// Flags every active enemy bullet for the shrink animation. They keep moving
+// and drawing while shrinking, but their hit radius collapses to 0 immediately
+// since collide_bullets_player skips any shrinking bullet.
+shrink_all_enemy_bullets :: proc(pool: ^Bullet_Pool) {
+	for i in 0 ..< MAX_BULLETS {
+		b := &pool.bullets[i]
+		if !b.active || b.kind != .Enemy || b.shrinking {
+			continue
+		}
+		b.shrinking = true
+		b.shrink_t = 0
 	}
 }
 
@@ -125,7 +169,7 @@ collide_bullets_player :: proc(pool: ^Bullet_Pool, player: ^Player) {
 	r_sq := r * r
 	for i in 0 ..< MAX_BULLETS {
 		b := &pool.bullets[i]
-		if !b.active || b.from_player {
+		if !b.active || b.kind != .Enemy || b.shrinking {
 			continue
 		}
 		dx := b.pos.x - pcx
@@ -134,7 +178,7 @@ collide_bullets_player :: proc(pool: ^Bullet_Pool, player: ^Player) {
 			continue
 		}
 		if player.dash_timer > 0 {
-			b.from_player = true
+			b.kind = .Reflected
 			b.vel = -b.vel
 			continue
 		}
@@ -159,8 +203,16 @@ collide_bullets_enemies :: proc(
 	r_boss_sq := r_boss * r_boss
 	for i in 0 ..< MAX_BULLETS {
 		b := &pool.bullets[i]
-		if !b.active || !b.from_player {
+		if !b.active || b.kind == .Enemy {
 			continue
+		}
+		damage := REFLECT_DAMAGE
+		impact_color := rl.Color{160, 220, 255, 255}
+		score_val := SCORE_KILL_REFLECT
+		if b.kind == .Rapid_Fire {
+			damage = RAPID_FIRE_DAMAGE
+			impact_color = rl.Color{255, 80, 80, 255}
+			score_val = SCORE_KILL_RAPID
 		}
 		hit := false
 		for ei in 0 ..< ENEMY_COUNT {
@@ -173,16 +225,11 @@ collide_bullets_enemies :: proc(
 			dx := b.pos.x - ec.x
 			dy := b.pos.y - ec.y
 			if dx * dx + dy * dy <= r * r {
-				killed := damage_enemy(e, REFLECT_DAMAGE)
-				spawn_impact_particles(
-					particles,
-					ec,
-					rl.Color{160, 220, 255, 255},
-					REFLECT_IMPACT_PARTICLES,
-				)
+				killed := damage_enemy(e, damage)
+				spawn_impact_particles(particles, ec, impact_color, REFLECT_IMPACT_PARTICLES)
 				b.active = false
 				if killed {
-					score^ += SCORE_KILL_REFLECT
+					score^ += score_val
 					try_spawn_sneak(sneaks)
 					try_drop_healthpack(packs, ec)
 				}
@@ -203,16 +250,11 @@ collide_bullets_enemies :: proc(
 			dx := b.pos.x - sc.x
 			dy := b.pos.y - sc.y
 			if dx * dx + dy * dy <= r * r {
-				killed := damage_sneak(s, REFLECT_DAMAGE)
-				spawn_impact_particles(
-					particles,
-					sc,
-					rl.Color{160, 220, 255, 255},
-					REFLECT_IMPACT_PARTICLES,
-				)
+				killed := damage_sneak(s, damage)
+				spawn_impact_particles(particles, sc, impact_color, REFLECT_IMPACT_PARTICLES)
 				b.active = false
 				if killed {
-					score^ += SCORE_KILL_REFLECT
+					score^ += score_val
 					try_spawn_sneak(sneaks)
 					try_drop_healthpack(packs, sc)
 				}
@@ -228,13 +270,8 @@ collide_bullets_enemies :: proc(
 			dx := b.pos.x - bc.x
 			dy := b.pos.y - bc.y
 			if dx * dx + dy * dy <= r_boss_sq {
-				killed := damage_boss(&boss.boss, REFLECT_DAMAGE)
-				spawn_impact_particles(
-					particles,
-					bc,
-					rl.Color{160, 220, 255, 255},
-					REFLECT_IMPACT_PARTICLES,
-				)
+				killed := damage_boss(&boss.boss, damage)
+				spawn_impact_particles(particles, bc, impact_color, REFLECT_IMPACT_PARTICLES)
 				b.active = false
 				if killed {
 					score^ += SCORE_KILL_BOSS
@@ -251,10 +288,30 @@ draw_bullets :: proc(pool: ^Bullet_Pool) {
 		if !b.active {
 			continue
 		}
-		col := b.color
-		if b.from_player {
-			col = rl.Color{160, 220, 255, 255}
+		switch b.kind {
+		case .Enemy:
+			scale := f32(1)
+			if b.shrinking {
+				scale = 1 - b.shrink_t
+				if scale < 0 {
+					scale = 0
+				}
+			}
+			rl.DrawCircleV(b.pos, BULLET_RADIUS * scale, b.color)
+		case .Reflected:
+			rl.DrawCircleV(b.pos, BULLET_RADIUS, rl.Color{160, 220, 255, 255})
+		case .Rapid_Fire:
+			draw_rapid_fire_bullet(b)
 		}
-		rl.DrawCircleV(b.pos, BULLET_RADIUS, col)
 	}
+}
+
+@(private = "file")
+draw_rapid_fire_bullet :: proc(b: ^Bullet) {
+	// Mirrors the laser palette: wide red glow, light pink mid, white core.
+	glow := rl.RED
+	glow.a = 70
+	rl.DrawCircleV(b.pos, RAPID_FIRE_RADIUS * RAPID_FIRE_GLOW_MULT, glow)
+	rl.DrawCircleV(b.pos, RAPID_FIRE_RADIUS * 1.6, rl.Color{255, 200, 200, 220})
+	rl.DrawCircleV(b.pos, RAPID_FIRE_RADIUS, rl.WHITE)
 }
