@@ -162,11 +162,12 @@ shrink_all_enemy_bullets :: proc(pool: ^Bullet_Pool) {
 	}
 }
 
-collide_bullets_player :: proc(pool: ^Bullet_Pool, player: ^Player) {
+collide_bullets_player :: proc(pool: ^Bullet_Pool, player: ^Player, audio: ^Audio) {
 	pcx := player.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
 	pcy := player.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
 	r := f32(PLAYER_HIT_RADIUS + BULLET_RADIUS)
 	r_sq := r * r
+	reflected_any := false
 	for i in 0 ..< MAX_BULLETS {
 		b := &pool.bullets[i]
 		if !b.active || b.kind != .Enemy || b.shrinking {
@@ -180,13 +181,17 @@ collide_bullets_player :: proc(pool: ^Bullet_Pool, player: ^Player) {
 		if player.dash_timer > 0 {
 			b.kind = .Reflected
 			b.vel = -b.vel
+			reflected_any = true
 			continue
 		}
 		b.active = false
-		damage_player(player, PLAYER_HIT_DAMAGE)
+		damage_player(player, audio, PLAYER_HIT_DAMAGE)
 		if player.invuln_timer > 0 {
-			return
+			break
 		}
+	}
+	if reflected_any {
+		play_reflect_sfx(audio)
 	}
 }
 

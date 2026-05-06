@@ -152,9 +152,9 @@ update :: proc() {
 
 	if !gs.victory && !gs.transitioning {
 		if input_shrink_bomb_pressed() {
-			deploy_shrink_bomb(&gs.player, &gs.bullets, &gs.particles)
+			deploy_shrink_bomb(&gs.player, &gs.bullets, &gs.particles, &gs.audio)
 		}
-		update_player(&gs.player, &gs.missiles, dt)
+		update_player(&gs.player, &gs.missiles, &gs.audio, dt)
 		update_level2_pacing(&gs.enemies, &gs.sneaks, world_dt)
 		update_enemies(&gs.enemies, &gs.boss, &gs.bullets, &gs.player, world_dt)
 		update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, world_dt)
@@ -168,6 +168,7 @@ update :: proc() {
 			&gs.boss,
 			&gs.healthpacks,
 			&gs.particles,
+			&gs.audio,
 			&gs.score,
 			dt,
 		)
@@ -184,7 +185,7 @@ update :: proc() {
 		)
 		update_particles(&gs.particles, world_dt)
 		update_bullets(&gs.bullets, &gs.enemies, &gs.sneaks, &gs.boss, dt, world_dt)
-		collide_bullets_player(&gs.bullets, &gs.player)
+		collide_bullets_player(&gs.bullets, &gs.player, &gs.audio)
 		collide_bullets_enemies(
 			&gs.bullets,
 			&gs.enemies,

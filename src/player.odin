@@ -89,7 +89,12 @@ init_player :: proc(p: ^Player) {
 	p.shrink_bombs = SHRINK_BOMBS_PER_LEVEL
 }
 
-deploy_shrink_bomb :: proc(p: ^Player, bullets: ^Bullet_Pool, particles: ^Particle_Pool) {
+deploy_shrink_bomb :: proc(
+	p: ^Player,
+	bullets: ^Bullet_Pool,
+	particles: ^Particle_Pool,
+	audio: ^Audio,
+) {
 	if p.shrink_bombs <= 0 {
 		return
 	}
@@ -98,6 +103,7 @@ deploy_shrink_bomb :: proc(p: ^Player, bullets: ^Bullet_Pool, particles: ^Partic
 	pcx := p.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
 	pcy := p.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
 	spawn_impact_particles(particles, {pcx, pcy}, rl.WHITE, SHRINK_BOMB_BURST_PARTICLES)
+	play_shrink_bomb_sfx(audio)
 }
 
 // Drains stamina while held and returns the dt that should be applied to
@@ -163,7 +169,7 @@ dash_stamina_cost :: proc(p: ^Player) -> f32 {
 	return PLAYER_DASH_STAMINA_COST
 }
 
-update_player :: proc(p: ^Player, missiles: ^Missile_Pool, dt: f32) {
+update_player :: proc(p: ^Player, missiles: ^Missile_Pool, audio: ^Audio, dt: f32) {
 	move := input_move()
 
 	if p.invuln_timer > 0 {
@@ -208,6 +214,7 @@ update_player :: proc(p: ^Player, missiles: ^Missile_Pool, dt: f32) {
 			if p.upgrade == .Dash_Frenzy {
 				launch_dash_missiles(missiles, {pcx, pcy}, dir)
 			}
+			play_dash_sfx(audio)
 		}
 	}
 
@@ -397,7 +404,7 @@ draw_player_hud :: proc(p: ^Player) {
 	}
 }
 
-damage_player :: proc(p: ^Player, amount: int) {
+damage_player :: proc(p: ^Player, audio: ^Audio, amount: int) {
 	if p.invuln_timer > 0 {
 		return
 	}
@@ -406,6 +413,7 @@ damage_player :: proc(p: ^Player, amount: int) {
 		p.hp = 0
 	}
 	p.invuln_timer = PLAYER_INVULN_TIME
+	play_player_damage_sfx(audio)
 }
 
 update_player_attack :: proc(
@@ -417,6 +425,7 @@ update_player_attack :: proc(
 	boss: ^Boss_Pool,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
+	audio: ^Audio,
 	score: ^int,
 	dt: f32,
 ) {
@@ -429,7 +438,7 @@ update_player_attack :: proc(
 
 	pcx := p.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
 	pcy := p.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
-	start := rl.Vector2{pcx, pcy}
+	start := rl.Vector2{pcx, pcy + PLAYER_PROJECTILE_ORIGIN_Y_OFFSET}
 	end := rl.Vector2{pcx, 0}
 
 	held := input_attack_held()
@@ -451,6 +460,7 @@ update_player_attack :: proc(
 		} else {
 			p.fire_timer = LASER_FIRE_INTERVAL
 			fire_laser(start, end, pcy, enemies, sneaks, boss, packs, particles, beams, score)
+			play_laser_sfx(audio)
 		}
 	}
 
@@ -478,6 +488,7 @@ update_player_attack :: proc(
 		// Defensive: slot was clobbered; abort cleanly.
 		p.charging = false
 		p.charge_beam_idx = -1
+		stop_charging_beam_sfx(audio)
 		return
 	}
 
@@ -487,6 +498,7 @@ update_player_attack :: proc(
 		b.start = start
 		b.end = end
 		spawn_gather_particle(particles, start, rl.MAGENTA, p.charge)
+		tick_charging_beam_sfx(audio)
 	}
 
 	if input_attack_released() {
@@ -499,6 +511,8 @@ update_player_attack :: proc(
 		p.charging = false
 		p.charge_beam_idx = -1
 		p.charge = 0
+		stop_charging_beam_sfx(audio)
+		play_charged_beam_sfx(audio)
 	}
 }
 

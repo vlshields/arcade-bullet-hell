@@ -6,6 +6,7 @@ SCREEN_HEIGHT :: 360 // px
 BG_LAYERS :: 3 // count
 
 MUSIC_VOLUME :: 0.2 // multiplier [0..1] (default volume for the looping theme song)
+SFX_VOLUME :: 0.6 // multiplier [0..1] (default volume applied to every loaded sfx clip)
 
 GAMEPAD_ID :: 0 // index
 STICK_DEADZONE :: 0.2 // normalized axis magnitude [0..1]
@@ -25,6 +26,8 @@ PLAYER_DRAW_SCALE :: 2 // multiplier (unitless)
 RETICLE_FRAME_W :: 8 // px (sprite source)
 RETICLE_FRAME_H :: 8 // px (sprite source)
 RETICLE_DISTANCE :: 90.0 // px (from player center)
+
+PLAYER_PROJECTILE_ORIGIN_Y_OFFSET :: -3.0 // px (vertical offset from player center where projectiles emit; negative = above center, lines up with the gun barrel)
 
 PLAYER_DASH_SPEED :: 480.0 // px/s
 PLAYER_DASH_DURATION :: 0.18 // s
