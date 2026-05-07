@@ -443,6 +443,8 @@ update_player_attack :: proc(
 	pcx := p.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
 	pcy := p.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
 	start := rl.Vector2{pcx, pcy + PLAYER_PROJECTILE_ORIGIN_Y_OFFSET}
+	// Charge beam still fires hitscan from start to top-of-screen; only the moving
+	// laser bolts use a direction + speed instead of an endpoint.
 	end := rl.Vector2{pcx, 0}
 
 	held := input_attack_held()
@@ -455,8 +457,8 @@ update_player_attack :: proc(
 	}
 
 	// Rapid Fire replaces the laser with a single straight-up projectile stream;
-	// Beam Blast replaces it with a 5-way short-range fan. Otherwise fall through
-	// to the vanilla single laser. The charge beam below still runs in all three
+	// Beam Blast replaces it with a 5-way fan of bolts. Otherwise fall through
+	// to the vanilla single bolt. The charge beam below still runs in all three
 	// cases that are not Rapid Fire — it shares the hold-to-fire input.
 	if held && p.fire_timer <= 0 {
 		if .Rapid_Fire in p.upgrades {
@@ -464,11 +466,11 @@ update_player_attack :: proc(
 			fire_rapid_burst(bullets, start)
 		} else if .Beam_Blast in p.upgrades {
 			p.fire_timer = LASER_FIRE_INTERVAL
-			fire_beam_blast(start, pcy, enemies, sneaks, boss, packs, particles, beams, score)
+			fire_beam_blast(beams, start)
 			play_laser_sfx(audio)
 		} else {
 			p.fire_timer = LASER_FIRE_INTERVAL
-			fire_laser(start, end, pcy, enemies, sneaks, boss, packs, particles, beams, score)
+			fire_laser(beams, start)
 			play_laser_sfx(audio)
 		}
 	}
@@ -530,130 +532,21 @@ fire_rapid_burst :: proc(bullets: ^Bullet_Pool, start: rl.Vector2) {
 	spawn_bullet(bullets, start, vel, rl.RED, .Rapid_Fire)
 }
 
-// Closest-point-on-segment distance vs radius. Used by laser collision so the
-// same routine handles the vanilla vertical beam and the angled Beam Blast fan.
-@(private = "file")
-beam_segment_hits :: proc(start, end, c: rl.Vector2, r: f32) -> bool {
-	seg := end - start
-	seg_len_sq := rl.Vector2DotProduct(seg, seg)
-	if seg_len_sq < 0.001 {
-		return rl.Vector2Distance(start, c) <= r
-	}
-	t := rl.Vector2DotProduct(c - start, seg) / seg_len_sq
-	if t < 0 {
-		t = 0
-	}
-	if t > 1 {
-		t = 1
-	}
-	closest := rl.Vector2{start.x + seg.x * t, start.y + seg.y * t}
-	return rl.Vector2Distance(closest, c) <= r
+// Spawn-only: bolts travel and collide each frame via collide_beams_enemies.
+fire_laser :: proc(beams: ^Beam_Pool, origin: rl.Vector2) {
+	spawn_laser_bolt(beams, origin, {0, -1}, LASER_DAMAGE)
 }
 
-fire_laser :: proc(
-	start, end: rl.Vector2,
-	pcy: f32,
-	enemies: ^Enemy_Pool,
-	sneaks: ^Sneak_Pool,
-	boss: ^Boss_Pool,
-	packs: ^HealthPack_Pool,
-	particles: ^Particle_Pool,
-	beams: ^Beam_Pool,
-	score: ^int,
-	damage: int = LASER_DAMAGE,
-) {
-	spawn_laser(beams, start, end)
-
-	for i in 0 ..< ENEMY_COUNT {
-		e := &enemies.enemies[i]
-		if !e.active {
-			continue
-		}
-		ec := enemy_center(e)
-		if ec.y > pcy {
-			continue
-		}
-		if !beam_segment_hits(start, end, ec, enemy_hit_radius(e)) {
-			continue
-		}
-		killed := damage_enemy(e, damage)
-		spawn_impact_particles(particles, ec, rl.RED, LASER_IMPACT_PARTICLES)
-		if killed {
-			score^ += SCORE_KILL_LASER
-			try_spawn_sneak(sneaks)
-			try_drop_healthpack(packs, ec)
-		}
-	}
-
-	for i in 0 ..< SNEAK_MAX {
-		s := &sneaks.sneaks[i]
-		if !s.active {
-			continue
-		}
-		sc := sneak_center(s)
-		if sc.y > pcy {
-			continue
-		}
-		if !beam_segment_hits(start, end, sc, sneak_hit_radius(s)) {
-			continue
-		}
-		killed := damage_sneak(s, damage)
-		spawn_impact_particles(particles, sc, rl.RED, LASER_IMPACT_PARTICLES)
-		if killed {
-			score^ += SCORE_KILL_LASER
-			try_spawn_sneak(sneaks)
-			try_drop_healthpack(packs, sc)
-		}
-	}
-
-	if boss.boss.active {
-		bc := boss_center(&boss.boss)
-		if bc.y <= pcy && beam_segment_hits(start, end, bc, boss_hit_radius(&boss.boss)) {
-			killed := damage_boss(&boss.boss, damage)
-			spawn_impact_particles(particles, bc, rl.RED, LASER_IMPACT_PARTICLES)
-			if killed {
-				score^ += SCORE_KILL_BOSS
-				try_drop_healthpack(packs, bc)
-			}
-		}
-	}
-}
-
-// Fan of BEAM_BLAST_BEAM_COUNT short-range lasers symmetric around straight up.
-// Each beam reuses fire_laser so spawn + collision + scoring stay identical.
-// Per-beam damage is reduced (BEAM_BLAST_DAMAGE_PER_BEAM, not LASER_DAMAGE) so
-// a target overlapped by all 5 beams takes 15 dmg per volley, not 30.
-fire_beam_blast :: proc(
-	start: rl.Vector2,
-	pcy: f32,
-	enemies: ^Enemy_Pool,
-	sneaks: ^Sneak_Pool,
-	boss: ^Boss_Pool,
-	packs: ^HealthPack_Pool,
-	particles: ^Particle_Pool,
-	beams: ^Beam_Pool,
-	score: ^int,
-) {
-	range := pcy * BEAM_BLAST_RANGE_MULT
+// Fan of BEAM_BLAST_BEAM_COUNT bolts symmetric around straight up. Each bolt
+// is its own moving projectile carrying BEAM_BLAST_DAMAGE_PER_BEAM, so a target
+// overlapped by all 5 bolts takes 15 dmg per volley, partial overlap scales linearly.
+fire_beam_blast :: proc(beams: ^Beam_Pool, origin: rl.Vector2) {
 	half := BEAM_BLAST_BEAM_COUNT / 2
 	for i in 0 ..< BEAM_BLAST_BEAM_COUNT {
 		angle_deg := f32(i - half) * BEAM_BLAST_ANGLE_STEP_DEG
 		rad := angle_deg * math.PI / 180
 		dir := rl.Vector2{math.sin(rad), -math.cos(rad)}
-		end := rl.Vector2{start.x + dir.x * range, start.y + dir.y * range}
-		fire_laser(
-			start,
-			end,
-			pcy,
-			enemies,
-			sneaks,
-			boss,
-			packs,
-			particles,
-			beams,
-			score,
-			BEAM_BLAST_DAMAGE_PER_BEAM,
-		)
+		spawn_laser_bolt(beams, origin, dir, BEAM_BLAST_DAMAGE_PER_BEAM)
 	}
 }
 

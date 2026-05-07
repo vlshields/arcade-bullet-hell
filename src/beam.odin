@@ -9,15 +9,22 @@ Beam_Type :: enum {
 	Charge,
 }
 
+// `.Laser` is a moving projectile-style bolt: `start` is the tail, `end` is the
+// tip, both advance by `vel * dt` each frame. `damage` is per-target and the
+// bolt deactivates on first hit. `.Charge` stays hitscan: `start`/`end` define
+// a static fat beam, damage is applied once on release, and the visual fades
+// out over `max_life`.
 Beam :: struct {
 	type:      Beam_Type,
 	start:     rl.Vector2,
 	end:       rl.Vector2,
+	vel:       rl.Vector2, // .Laser only
+	damage:    int, // .Laser only
 	lifetime:  f32,
 	max_life:  f32,
-	charging:  bool, // Charge only
-	charge:    f32, // Charge only
-	thickness: f32, // Charge only (laser uses LASER_THICKNESS)
+	charging:  bool, // .Charge only
+	charge:    f32, // .Charge only
+	thickness: f32, // .Charge only (laser uses LASER_THICKNESS)
 	active:    bool,
 }
 
@@ -25,13 +32,37 @@ Beam_Pool :: struct {
 	beams: [MAX_BEAMS]Beam,
 }
 
-spawn_laser :: proc(pool: ^Beam_Pool, start, end: rl.Vector2) {
+// Closest-point-on-segment distance vs radius. Used by laser-bolt collision so
+// a single test handles vertical vanilla bolts and angled Beam Blast bolts.
+beam_segment_hits :: proc(start, end, c: rl.Vector2, r: f32) -> bool {
+	seg := end - start
+	seg_len_sq := rl.Vector2DotProduct(seg, seg)
+	if seg_len_sq < 0.001 {
+		return rl.Vector2Distance(start, c) <= r
+	}
+	t := rl.Vector2DotProduct(c - start, seg) / seg_len_sq
+	if t < 0 {
+		t = 0
+	}
+	if t > 1 {
+		t = 1
+	}
+	closest := rl.Vector2{start.x + seg.x * t, start.y + seg.y * t}
+	return rl.Vector2Distance(closest, c) <= r
+}
+
+spawn_laser_bolt :: proc(pool: ^Beam_Pool, origin, dir: rl.Vector2, damage: int) {
+	vel := dir * LASER_BOLT_SPEED
+	end := origin
+	start := origin - dir * LASER_BOLT_LENGTH
 	for i in 0 ..< MAX_BEAMS {
 		if !pool.beams[i].active {
 			pool.beams[i] = Beam {
 				type     = .Laser,
 				start    = start,
 				end      = end,
+				vel      = vel,
+				damage   = damage,
 				lifetime = 0,
 				max_life = LASER_LIFETIME,
 				active   = true,
@@ -85,6 +116,99 @@ update_beams :: proc(pool: ^Beam_Pool, dt: f32) {
 		b.lifetime += dt
 		if b.lifetime >= b.max_life {
 			b.active = false
+			continue
+		}
+		if b.type == .Laser {
+			b.start += b.vel * dt
+			b.end += b.vel * dt
+			// Off-screen safety: once both endpoints are clearly outside the
+			// playfield in the same direction, drop the bolt early.
+			margin: f32 = LASER_BOLT_LENGTH
+			if (b.start.y < -margin && b.end.y < -margin) ||
+			   (b.start.y > SCREEN_HEIGHT + margin && b.end.y > SCREEN_HEIGHT + margin) ||
+			   (b.start.x < -margin && b.end.x < -margin) ||
+			   (b.start.x > SCREEN_WIDTH + margin && b.end.x > SCREEN_WIDTH + margin) {
+				b.active = false
+			}
+		}
+	}
+}
+
+// Per-frame collision pass for moving laser bolts. A bolt deactivates on its
+// first contact (no piercing). Charge beams are NOT processed here — they
+// damage at release time inside fire_charge_beam.
+collide_beams_enemies :: proc(
+	pool: ^Beam_Pool,
+	enemies: ^Enemy_Pool,
+	sneaks: ^Sneak_Pool,
+	boss: ^Boss_Pool,
+	packs: ^HealthPack_Pool,
+	particles: ^Particle_Pool,
+	score: ^int,
+) {
+	for i in 0 ..< MAX_BEAMS {
+		b := &pool.beams[i]
+		if !b.active || b.type != .Laser {
+			continue
+		}
+		hit := false
+		for ei in 0 ..< ENEMY_COUNT {
+			e := &enemies.enemies[ei]
+			if !e.active {
+				continue
+			}
+			ec := enemy_center(e)
+			if !beam_segment_hits(b.start, b.end, ec, enemy_hit_radius(e)) {
+				continue
+			}
+			killed := damage_enemy(e, b.damage)
+			spawn_impact_particles(particles, ec, rl.RED, LASER_IMPACT_PARTICLES)
+			if killed {
+				score^ += SCORE_KILL_LASER
+				try_spawn_sneak(sneaks)
+				try_drop_healthpack(packs, ec)
+			}
+			hit = true
+			break
+		}
+		if hit {
+			b.active = false
+			continue
+		}
+		for si in 0 ..< SNEAK_MAX {
+			s := &sneaks.sneaks[si]
+			if !s.active {
+				continue
+			}
+			sc := sneak_center(s)
+			if !beam_segment_hits(b.start, b.end, sc, sneak_hit_radius(s)) {
+				continue
+			}
+			killed := damage_sneak(s, b.damage)
+			spawn_impact_particles(particles, sc, rl.RED, LASER_IMPACT_PARTICLES)
+			if killed {
+				score^ += SCORE_KILL_LASER
+				try_spawn_sneak(sneaks)
+				try_drop_healthpack(packs, sc)
+			}
+			hit = true
+			break
+		}
+		if hit {
+			b.active = false
+			continue
+		}
+		if boss.boss.active {
+			bc := boss_center(&boss.boss)
+			if beam_segment_hits(b.start, b.end, bc, boss_hit_radius(&boss.boss)) {
+				killed := damage_boss(&boss.boss, b.damage)
+				spawn_impact_particles(particles, bc, rl.RED, LASER_IMPACT_PARTICLES)
+				if killed {
+					score^ += SCORE_KILL_BOSS
+					try_drop_healthpack(packs, bc)
+				}
+				b.active = false
+			}
 		}
 	}
 }
@@ -110,18 +234,19 @@ draw_beams :: proc(pool: ^Beam_Pool) {
 }
 
 draw_laser_beam :: proc(b: ^Beam) {
-	alpha := 1.0 - (b.lifetime / b.max_life)
-
+	// Bolt stays full-bright while alive; it usually exits via hit or off-screen
+	// long before max_life. The tip carries a soft glow halo for projectile feel.
 	glow := rl.RED
-	glow.a = u8(alpha * 40)
+	glow.a = 60
 	rl.DrawLineEx(b.start, b.end, LASER_THICKNESS * LASER_GLOW_MULT, glow)
 
-	core := rl.WHITE
-	core.a = u8(alpha * 255)
-	rl.DrawLineEx(b.start, b.end, LASER_THICKNESS, core)
+	mid := rl.Color{255, 120, 120, 220}
+	rl.DrawLineEx(b.start, b.end, LASER_THICKNESS * 2, mid)
 
-	inner := rl.Color{255, 200, 200, u8(alpha * 255)}
-	rl.DrawLineEx(b.start, b.end, 1, inner)
+	rl.DrawLineEx(b.start, b.end, LASER_THICKNESS, rl.WHITE)
+
+	tip_glow := rl.Color{255, 200, 200, 140}
+	rl.DrawCircleV(b.end, LASER_THICKNESS * LASER_GLOW_MULT * 0.6, tip_glow)
 }
 
 draw_charging_beam :: proc(b: ^Beam, t: f32) {

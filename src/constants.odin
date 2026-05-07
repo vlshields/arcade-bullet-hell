@@ -206,10 +206,12 @@ REFLECT_IMPACT_PARTICLES :: 5 // count (per enemy hit by reflected bullet)
 
 LASER_FIRE_INTERVAL :: 0.19 // s (between shots while shoot button held)
 LASER_DAMAGE :: 6 // hp/hit
-LASER_LIFETIME :: 0.08 // s
+LASER_LIFETIME :: 1.0 // s (max bolt lifetime safety despawn; usual exit is hit or off-screen)
 LASER_THICKNESS :: 1.0 // px (core line)
 LASER_GLOW_MULT :: 4.0 // multiplier (unitless, glow thickness vs core)
 LASER_IMPACT_PARTICLES :: 6 // count (per enemy hit by laser)
+LASER_BOLT_SPEED :: 900.0 // px/s (bolt travel speed; one SCREEN_HEIGHT covered in ~0.4s)
+LASER_BOLT_LENGTH :: 24.0 // px (visual + collision length of each bolt)
 
 CHARGE_BEAM_BASE_DAMAGE :: 6 // hp/hit (released at >= MIN_FIRE charge)
 CHARGE_BEAM_DAMAGE_BONUS :: 6 // hp/hit (added at full charge; total = 2 * base)
@@ -230,10 +232,9 @@ CHARGE_BEAM_GATHER_DIST_RANGE :: 20.0 // px (gather particle spawn distance rand
 CHARGE_BEAM_GATHER_LIFE :: 0.2 // s (gather particle lifetime)
 MAX_BEAMS :: 16 // count (pool capacity)
 
-BEAM_BLAST_BEAM_COUNT :: 5 // count (laser beams fired per Beam_Blast burst, fanned symmetrically around straight up)
-BEAM_BLAST_ANGLE_STEP_DEG :: 20.0 // deg (angle between adjacent beams; outermost beams sit at +/- 2 * step from up)
-BEAM_BLAST_RANGE_MULT :: 0.5 // multiplier (unitless; per-beam length vs the vanilla laser's full vertical reach)
-BEAM_BLAST_DAMAGE_PER_BEAM :: 3 // hp/hit (lower than LASER_DAMAGE so all 5 beams overlapping cap volley damage at 15)
+BEAM_BLAST_BEAM_COUNT :: 5 // count (laser bolts fired per Beam_Blast burst, fanned symmetrically around straight up)
+BEAM_BLAST_ANGLE_STEP_DEG :: 20.0 // deg (angle between adjacent bolts; outermost bolts sit at +/- 2 * step from up)
+BEAM_BLAST_DAMAGE_PER_BEAM :: 3 // hp/hit (per-bolt; volley damage caps at 15 when all 5 bolts converge on a single target)
 
 RAPID_FIRE_INTERVAL :: 0.05 // s (between rapid-fire shots while attack is held; 20 shots/s for bullet-hell density)
 RAPID_FIRE_DAMAGE :: 3 // hp/hit (per rapid-fire bullet on enemy)

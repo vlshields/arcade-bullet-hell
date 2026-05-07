@@ -210,6 +210,15 @@ update :: proc() {
 					dt,
 				)
 				update_beams(&gs.beams, dt)
+				collide_beams_enemies(
+					&gs.beams,
+					&gs.enemies,
+					&gs.sneaks,
+					&gs.boss,
+					&gs.healthpacks,
+					&gs.particles,
+					&gs.score,
+				)
 				update_missiles(
 					&gs.missiles,
 					&gs.enemies,
