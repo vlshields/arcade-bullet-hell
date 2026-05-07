@@ -1,6 +1,7 @@
 package game
 
 import "core:fmt"
+import "core:math/rand"
 import rl "vendor:raylib"
 
 Game_State :: struct {
@@ -33,7 +34,12 @@ Game_State :: struct {
 	running:            bool,
 	victory:            bool,
 	choosing_upgrade:   bool,
-	upgrade_cursor:     int, // 0 = Slow Time, 1 = Dash Frenzy, 2 = Rapid Fire
+	// Up to 3 distinct upgrades sampled from the player's available pool at the
+	// end of each level. upgrade_cursor indexes into upgrade_choices, not the
+	// Player_Upgrade enum, since the offered set changes between levels.
+	upgrade_choices:      [3]Player_Upgrade,
+	upgrade_choice_count: int,
+	upgrade_cursor:       int,
 	paused:             bool,
 	pause:              Pause_Menu,
 }
@@ -119,13 +125,7 @@ update :: proc() {
 		if gs.boss.boss.defeated && !gs.victory {
 			gs.victory = true
 			clear_world()
-			// First-time victory on level 1 forces the upgrade choice before the
-			// player can advance. Later levels skip straight to the press-to-continue
-			// prompt because there is no second upgrade to choose between.
-			if gs.level == 1 && gs.player.upgrade == .None {
-				gs.choosing_upgrade = true
-				gs.upgrade_cursor = 0
-			}
+			open_upgrade_choice()
 		}
 
 		// Level 2 has no boss yet; victory triggers once the scripted phase sequence
@@ -135,22 +135,17 @@ update :: proc() {
 		   !gs.victory {
 			gs.victory = true
 			clear_world()
+			open_upgrade_choice()
 		}
 
 		if gs.victory && gs.choosing_upgrade {
+			n := gs.upgrade_choice_count
 			step := input_menu_step_x()
-			if step != 0 {
-				gs.upgrade_cursor = (gs.upgrade_cursor + step + 3) % 3
+			if step != 0 && n > 0 {
+				gs.upgrade_cursor = (gs.upgrade_cursor + step + n) % n
 			}
-			if input_confirm_pressed() {
-				switch gs.upgrade_cursor {
-				case 0:
-					gs.player.upgrade = .Slow_Time
-				case 1:
-					gs.player.upgrade = .Dash_Frenzy
-				case 2:
-					gs.player.upgrade = .Rapid_Fire
-				}
+			if input_confirm_pressed() && n > 0 {
+				gs.player.upgrades += {gs.upgrade_choices[gs.upgrade_cursor]}
 				gs.choosing_upgrade = false
 			}
 		} else if gs.victory &&
@@ -174,10 +169,15 @@ update :: proc() {
 			}
 		}
 
+		// Boss-driven world freeze (Morgan inter-phase pause): nothing but the
+		// boss ticks — HP refill animates and player input is ignored. Treated
+		// the same as victory/transition for slow-time + gameplay gating.
+		boss_pausing := boss_phase_pausing(&gs.boss.boss)
+
 		// Slow-time only ticks during gameplay; outside gameplay world_dt = dt so
 		// the background scroll and timers run at full speed.
 		world_dt := dt
-		if !gs.victory && !gs.transitioning {
+		if !gs.victory && !gs.transitioning && !boss_pausing {
 			world_dt = update_slow_time(&gs.player, dt)
 		}
 
@@ -185,51 +185,55 @@ update :: proc() {
 		update_background(&gs.background, world_dt)
 
 		if !gs.victory && !gs.transitioning {
-			if input_shrink_bomb_pressed() {
-				deploy_shrink_bomb(&gs.player, &gs.bullets, &gs.particles, &gs.audio)
+			if boss_pausing {
+				update_boss(&gs.boss, &gs.bullets, &gs.sneaks, dt)
+			} else {
+				if input_shrink_bomb_pressed() {
+					deploy_shrink_bomb(&gs.player, &gs.bullets, &gs.particles, &gs.audio)
+				}
+				update_player(&gs.player, &gs.missiles, &gs.audio, dt)
+				update_level2_pacing(&gs.enemies, &gs.sneaks, world_dt)
+				update_enemies(&gs.enemies, &gs.boss, &gs.bullets, &gs.player, world_dt)
+				update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, world_dt)
+				update_boss(&gs.boss, &gs.bullets, &gs.sneaks, world_dt)
+				update_player_attack(
+					&gs.player,
+					&gs.beams,
+					&gs.bullets,
+					&gs.enemies,
+					&gs.sneaks,
+					&gs.boss,
+					&gs.healthpacks,
+					&gs.particles,
+					&gs.audio,
+					&gs.score,
+					dt,
+				)
+				update_beams(&gs.beams, dt)
+				update_missiles(
+					&gs.missiles,
+					&gs.enemies,
+					&gs.sneaks,
+					&gs.boss,
+					&gs.healthpacks,
+					&gs.particles,
+					&gs.score,
+					dt,
+				)
+				update_particles(&gs.particles, world_dt)
+				update_bullets(&gs.bullets, &gs.enemies, &gs.sneaks, &gs.boss, dt, world_dt)
+				collide_bullets_player(&gs.bullets, &gs.player, &gs.audio)
+				collide_bullets_enemies(
+					&gs.bullets,
+					&gs.enemies,
+					&gs.sneaks,
+					&gs.boss,
+					&gs.healthpacks,
+					&gs.particles,
+					&gs.score,
+				)
+				update_healthpacks(&gs.healthpacks, &gs.player, world_dt)
 			}
-			update_player(&gs.player, &gs.missiles, &gs.audio, dt)
-			update_level2_pacing(&gs.enemies, &gs.sneaks, world_dt)
-			update_enemies(&gs.enemies, &gs.boss, &gs.bullets, &gs.player, world_dt)
-			update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, world_dt)
-			update_boss(&gs.boss, &gs.bullets, &gs.sneaks, world_dt)
-			update_player_attack(
-				&gs.player,
-				&gs.beams,
-				&gs.bullets,
-				&gs.enemies,
-				&gs.sneaks,
-				&gs.boss,
-				&gs.healthpacks,
-				&gs.particles,
-				&gs.audio,
-				&gs.score,
-				dt,
-			)
-			update_beams(&gs.beams, dt)
-			update_missiles(
-				&gs.missiles,
-				&gs.enemies,
-				&gs.sneaks,
-				&gs.boss,
-				&gs.healthpacks,
-				&gs.particles,
-				&gs.score,
-				dt,
-			)
-			update_particles(&gs.particles, world_dt)
-			update_bullets(&gs.bullets, &gs.enemies, &gs.sneaks, &gs.boss, dt, world_dt)
-			collide_bullets_player(&gs.bullets, &gs.player, &gs.audio)
-			collide_bullets_enemies(
-				&gs.bullets,
-				&gs.enemies,
-				&gs.sneaks,
-				&gs.boss,
-				&gs.healthpacks,
-				&gs.particles,
-				&gs.score,
-			)
-			update_healthpacks(&gs.healthpacks, &gs.player, world_dt)
 		}
 	}
 
@@ -254,7 +258,10 @@ update :: proc() {
 	if gs.victory {
 		draw_victory(gs.level, gs.score, gs.choosing_upgrade, gs.level < MAX_LEVEL)
 		if gs.choosing_upgrade {
-			draw_upgrade_choice(gs.upgrade_cursor)
+			draw_upgrade_choice(
+				gs.upgrade_choices[:gs.upgrade_choice_count],
+				gs.upgrade_cursor,
+			)
 		}
 	}
 	if gs.transitioning {
@@ -397,7 +404,12 @@ draw_victory :: proc(level: int, score: int, choosing: bool, has_next: bool) {
 	rl.DrawText(prompt, prompt_x, prompt_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
 }
 
-draw_upgrade_choice :: proc(cursor: int) {
+draw_upgrade_choice :: proc(choices: []Player_Upgrade, cursor: int) {
+	n := i32(len(choices))
+	if n == 0 {
+		return
+	}
+
 	header := cstring("CHOOSE YOUR UPGRADE")
 	hw := rl.MeasureText(header, UPGRADE_HEADER_FONT_SIZE)
 	hx := (i32(SCREEN_WIDTH) - hw) / 2
@@ -405,39 +417,23 @@ draw_upgrade_choice :: proc(cursor: int) {
 	rl.DrawText(header, hx, UPGRADE_HEADER_Y, UPGRADE_HEADER_FONT_SIZE, rl.WHITE)
 
 	gap: i32 = UPGRADE_CARD_GAP
-	total_w: i32 = UPGRADE_CARD_W * 3 + gap * 2
+	total_w: i32 = UPGRADE_CARD_W * n + gap * (n - 1)
 	left_x: i32 = (i32(SCREEN_WIDTH) - total_w) / 2
 
-	draw_upgrade_card(
-		left_x,
-		UPGRADE_CARDS_Y,
-		"SLOW TIME",
-		input_hint("HOLD SHIFT", "HOLD LT"),
-		"BENDS WORLD TO HALF SPEED",
-		"DRAINS STAMINA WHILE HELD",
-		rl.Color{80, 180, 255, 255},
-		cursor == 0,
-	)
-	draw_upgrade_card(
-		left_x + UPGRADE_CARD_W + gap,
-		UPGRADE_CARDS_Y,
-		"DASH FRENZY",
-		"ON DASH",
-		"FIRES 2 HOMING MISSILES (8 DMG)",
-		"+2 STAMINA PER DASH",
-		rl.Color{200, 110, 255, 255},
-		cursor == 1,
-	)
-	draw_upgrade_card(
-		left_x + (UPGRADE_CARD_W + gap) * 2,
-		UPGRADE_CARDS_Y,
-		"RAPID FIRE",
-		"HOLD ATTACK",
-		"REPLACES LASER WITH BULLETS",
-		"AUTOFIRE STRAIGHT UP",
-		rl.Color{255, 80, 80, 255},
-		cursor == 2,
-	)
+	for c, i in choices {
+		x := left_x + i32(i) * (UPGRADE_CARD_W + gap)
+		name, cue, line1, line2, accent := upgrade_card_info(c)
+		draw_upgrade_card(
+			x,
+			UPGRADE_CARDS_Y,
+			name,
+			cue,
+			line1,
+			line2,
+			accent,
+			cursor == i,
+		)
+	}
 
 	hint := input_hint(
 		"LEFT/RIGHT TO PICK   ENTER TO CONFIRM",
@@ -448,6 +444,86 @@ draw_upgrade_choice :: proc(cursor: int) {
 	hint_y: i32 = UPGRADE_CARDS_Y + UPGRADE_CARD_H + 10
 	rl.DrawText(hint, hint_x + 1, hint_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
 	rl.DrawText(hint, hint_x, hint_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
+}
+
+@(private = "file")
+upgrade_card_info :: proc(
+	u: Player_Upgrade,
+) -> (
+	name: cstring,
+	cue: cstring,
+	line1: cstring,
+	line2: cstring,
+	accent: rl.Color,
+) {
+	switch u {
+	case .Slow_Time:
+		return "SLOW TIME",
+			input_hint("HOLD SHIFT", "HOLD LT"),
+			"BENDS WORLD TO HALF SPEED",
+			"DRAINS STAMINA WHILE HELD",
+			rl.Color{80, 180, 255, 255}
+	case .Dash_Frenzy:
+		return "DASH FRENZY",
+			"ON DASH",
+			"FIRES 2 HOMING MISSILES (8 DMG)",
+			"+2 STAMINA PER DASH",
+			rl.Color{200, 110, 255, 255}
+	case .Rapid_Fire:
+		return "RAPID FIRE",
+			"HOLD ATTACK",
+			"REPLACES LASER WITH BULLETS",
+			"AUTOFIRE STRAIGHT UP",
+			rl.Color{255, 80, 80, 255}
+	case .Beam_Blast:
+		return "BEAM BLAST",
+			"HOLD ATTACK",
+			"5-WAY LASER SPREAD (20 DEG)",
+			"RANGE REDUCED BY 50%",
+			rl.Color{255, 200, 80, 255}
+	}
+	return
+}
+
+// Builds the upgrade pool from {all upgrades} - {already owned}, with the
+// Rapid_Fire <-> Beam_Blast mutex applied. Samples up to 3 distinct upgrades
+// without replacement and switches into the choosing-upgrade state. If the
+// pool is empty (all relevant upgrades owned) the picker is skipped entirely.
+@(private = "file")
+open_upgrade_choice :: proc() {
+	pool: [4]Player_Upgrade
+	n := 0
+	for u in Player_Upgrade {
+		if u in gs.player.upgrades {
+			continue
+		}
+		if u == .Rapid_Fire && .Beam_Blast in gs.player.upgrades {
+			continue
+		}
+		if u == .Beam_Blast && .Rapid_Fire in gs.player.upgrades {
+			continue
+		}
+		pool[n] = u
+		n += 1
+	}
+	if n == 0 {
+		gs.choosing_upgrade = false
+		gs.upgrade_choice_count = 0
+		return
+	}
+	// Fisher-Yates: only the first `take` slots need to be uniformly random,
+	// so partial-shuffle and stop early.
+	take := min(len(gs.upgrade_choices), n)
+	for i in 0 ..< take {
+		j := i + int(rand.uint32() % u32(n - i))
+		pool[i], pool[j] = pool[j], pool[i]
+	}
+	for i in 0 ..< take {
+		gs.upgrade_choices[i] = pool[i]
+	}
+	gs.upgrade_choice_count = take
+	gs.upgrade_cursor = 0
+	gs.choosing_upgrade = true
 }
 
 @(private = "file")
@@ -507,8 +583,11 @@ advance_to_next_mission :: proc() {
 	gs.boss.boss.active = false
 	gs.sneaks.level = gs.level
 	gs.enemies.level = gs.level
-	if gs.level >= 2 {
+	if gs.level == 2 {
 		reset_level2_pacing(&gs.enemies, &gs.sneaks)
+	}
+	if gs.level == 3 {
+		spawn_morgan(&gs.boss)
 	}
 	gs.player.hp = PLAYER_MAX_HP
 	gs.player.shrink_bombs = SHRINK_BOMBS_PER_LEVEL

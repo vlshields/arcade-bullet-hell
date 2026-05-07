@@ -26,6 +26,10 @@ Bullet :: struct {
 	// (1 - shrink_t), and the bullet deactivates once shrink_t hits 1.
 	shrinking: bool,
 	shrink_t:  f32,
+	// Morgan's energy-orb projectile: oversized .Enemy bullet that bursts into a
+	// MORGAN_ORB_BURST_COUNT-bullet ring on EOL. Visual + collision radius differ
+	// from the regular bullet path; collision hit-radius queried via bullet_hit_radius.
+	is_burst_orb: bool,
 }
 
 Bullet_Pool :: struct {
@@ -54,6 +58,41 @@ spawn_bullet :: proc(
 			}
 			return
 		}
+	}
+}
+
+spawn_energy_orb :: proc(pool: ^Bullet_Pool, pos, vel: rl.Vector2) {
+	for i in 0 ..< MAX_BULLETS {
+		if !pool.bullets[i].active {
+			pool.bullets[i] = Bullet {
+				pos          = pos,
+				vel          = vel,
+				life         = MORGAN_ORB_LIFE,
+				color        = rl.Color{160, 80, 255, 255},
+				kind         = .Enemy,
+				active       = true,
+				is_burst_orb = true,
+			}
+			return
+		}
+	}
+}
+
+bullet_hit_radius :: proc(b: ^Bullet) -> f32 {
+	if b.is_burst_orb {
+		return MORGAN_ORB_HIT_RADIUS
+	}
+	return BULLET_RADIUS
+}
+
+@(private = "file")
+detonate_orb :: proc(pool: ^Bullet_Pool, pos: rl.Vector2) {
+	step := math.TAU / f32(MORGAN_ORB_BURST_COUNT)
+	color := rl.Color{200, 140, 255, 255}
+	for i in 0 ..< MORGAN_ORB_BURST_COUNT {
+		ang := f32(i) * step
+		vel := rl.Vector2{math.cos(ang) * MORGAN_ORB_BURST_SPEED, math.sin(ang) * MORGAN_ORB_BURST_SPEED}
+		spawn_bullet(pool, pos, vel, color)
 	}
 }
 
@@ -136,6 +175,9 @@ update_bullets :: proc(
 		b.pos += b.vel * use_dt
 		b.life -= use_dt
 		if b.life <= 0 {
+			if b.is_burst_orb && b.kind == .Enemy && !b.shrinking {
+				detonate_orb(pool, b.pos)
+			}
 			b.active = false
 			continue
 		}
@@ -165,14 +207,14 @@ shrink_all_enemy_bullets :: proc(pool: ^Bullet_Pool) {
 collide_bullets_player :: proc(pool: ^Bullet_Pool, player: ^Player, audio: ^Audio) {
 	pcx := player.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
 	pcy := player.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
-	r := f32(PLAYER_HIT_RADIUS + BULLET_RADIUS)
-	r_sq := r * r
 	reflected_any := false
 	for i in 0 ..< MAX_BULLETS {
 		b := &pool.bullets[i]
 		if !b.active || b.kind != .Enemy || b.shrinking {
 			continue
 		}
+		r := f32(PLAYER_HIT_RADIUS) + bullet_hit_radius(b)
+		r_sq := r * r
 		dx := b.pos.x - pcx
 		dy := b.pos.y - pcy
 		if dx * dx + dy * dy > r_sq {
@@ -204,7 +246,7 @@ collide_bullets_enemies :: proc(
 	particles: ^Particle_Pool,
 	score: ^int,
 ) {
-	r_boss := f32(BOSS_HIT_RADIUS + BULLET_RADIUS)
+	r_boss := boss_hit_radius(&boss.boss) + BULLET_RADIUS
 	r_boss_sq := r_boss * r_boss
 	for i in 0 ..< MAX_BULLETS {
 		b := &pool.bullets[i]
@@ -302,13 +344,30 @@ draw_bullets :: proc(pool: ^Bullet_Pool) {
 					scale = 0
 				}
 			}
-			rl.DrawCircleV(b.pos, BULLET_RADIUS * scale, b.color)
+			if b.is_burst_orb {
+				draw_energy_orb(b, scale)
+			} else {
+				rl.DrawCircleV(b.pos, BULLET_RADIUS * scale, b.color)
+			}
 		case .Reflected:
 			rl.DrawCircleV(b.pos, BULLET_RADIUS, rl.Color{160, 220, 255, 255})
 		case .Rapid_Fire:
 			draw_rapid_fire_bullet(b)
 		}
 	}
+}
+
+@(private = "file")
+draw_energy_orb :: proc(b: ^Bullet, scale: f32) {
+	if scale <= 0 {
+		return
+	}
+	core_r := MORGAN_ORB_DRAW_RADIUS * scale
+	glow := rl.Color{160, 80, 255, 70}
+	rl.DrawCircleV(b.pos, core_r * 2.4, glow)
+	rl.DrawCircleV(b.pos, core_r * 1.5, rl.Color{200, 140, 255, 160})
+	rl.DrawCircleV(b.pos, core_r, rl.Color{230, 200, 255, 255})
+	rl.DrawCircleV(b.pos, core_r * 0.45, rl.WHITE)
 }
 
 @(private = "file")

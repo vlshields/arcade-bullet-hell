@@ -109,6 +109,46 @@ BOSS_HUD_BAR_H :: 8 // px
 BOSS_HUD_NAME_Y :: 6 // px (name top edge from screen top)
 BOSS_HUD_BAR_Y :: 22 // px (bar top edge from screen top)
 
+MORGAN_NAME :: "MORGAN" // string
+MORGAN_FRAME_W :: 32 // px (sprite source)
+MORGAN_FRAME_H :: 32 // px (sprite source)
+MORGAN_IDLE_FRAMES :: 9 // count
+MORGAN_DRAW_SCALE :: 2 // multiplier (unitless)
+MORGAN_ANIM_FPS :: 8.0 // frames/s
+MORGAN_HIT_RADIUS :: 32.0 // px (matches the visible 64x64 sprite — hits anywhere on the body register)
+MORGAN_PHASE_HP :: 300 // hp (per phase; defeated after 3 phases)
+MORGAN_PHASE_TRANSITION_DUR :: 1.5 // s (between-phase pause: world freezes and HP bar refills from 0 to MORGAN_PHASE_HP)
+MORGAN_SHIELD_HP :: 50 // hp (phase-3 energy shield; absorbs damage until broken)
+MORGAN_SHIELD_RECOVER_TIME :: 5.0 // s (delay before a broken shield comes back at full)
+MORGAN_SPAWN_X :: 320.0 // px (anchor x; SCREEN_WIDTH / 2)
+MORGAN_SPAWN_Y :: 70.0 // px (anchor y)
+MORGAN_P1_SWAY_AMP :: 100.0 // px
+MORGAN_P1_SWAY_FREQ :: 0.4 // Hz
+MORGAN_P2_SWAY_AMP :: 110.0 // px
+MORGAN_P2_SWAY_FREQ :: 0.6 // Hz
+MORGAN_P3_SWAY_AMP :: 140.0 // px (faster, wider in the final phase)
+MORGAN_P3_SWAY_FREQ :: 1.0 // Hz
+MORGAN_P1_FIRE_INTERVAL :: 0.18 // s (sparse spiral)
+MORGAN_P1_ROWS :: 3 // count
+MORGAN_P1_ANGLE_INC_DEG :: 11.0 // deg/burst
+MORGAN_P1_BULLET_SPEED :: 75.0 // px/s
+MORGAN_P2_FIRE_INTERVAL :: 0.1 // s (denser, faster)
+MORGAN_P2_ROWS :: 5 // count
+MORGAN_P2_ANGLE_INC_DEG :: 7.0 // deg/burst
+MORGAN_P2_BULLET_SPEED :: 95.0 // px/s
+MORGAN_P3_FIRE_INTERVAL :: 0.06 // s (most punishing spiral)
+MORGAN_P3_ROWS :: 7 // count
+MORGAN_P3_ANGLE_INC_DEG :: 5.0 // deg/burst
+MORGAN_P3_BULLET_SPEED :: 120.0 // px/s
+MORGAN_ORB_INTERVAL :: 3.5 // s (cadence of the slow energy projectile that bursts on EOL)
+MORGAN_ORB_SPEED :: 38.0 // px/s (slow — easy to dodge directly)
+MORGAN_ORB_LIFE :: 4.5 // s (travels ~170px, then bursts)
+MORGAN_ORB_HIT_RADIUS :: 8.0 // px (collision radius for the orb itself)
+MORGAN_ORB_DRAW_RADIUS :: 11.0 // px (visual core radius)
+MORGAN_ORB_BURST_COUNT :: 18 // count (bullets in the omnidirectional ring spawned on EOL)
+MORGAN_ORB_BURST_SPEED :: 80.0 // px/s (ring bullets)
+MORGAN_P2_SNEAK_INTERVAL :: 3.5 // s (cadence of phase-2 sneak summons)
+
 SNEAK_MAX :: 6 // count (hard cap on simultaneously active minor enemies — sneaks + cyclops share slots; sized for the level-2 "between" phases where 4 sneaks or 1 cyclops + sneaks are scripted at once)
 LEVEL1_SNEAK_CAP :: 2 // count (effective level-1 cap; preserves prior level-1 difficulty since the pool was historically size 2)
 SNEAK_SPAWN_CHANCE :: 0.5 // probability [0..1] (heads = sneak, tails = cyclops on level >= 2; rolled on any enemy death)
@@ -190,6 +230,11 @@ CHARGE_BEAM_GATHER_DIST_RANGE :: 20.0 // px (gather particle spawn distance rand
 CHARGE_BEAM_GATHER_LIFE :: 0.2 // s (gather particle lifetime)
 MAX_BEAMS :: 16 // count (pool capacity)
 
+BEAM_BLAST_BEAM_COUNT :: 5 // count (laser beams fired per Beam_Blast burst, fanned symmetrically around straight up)
+BEAM_BLAST_ANGLE_STEP_DEG :: 20.0 // deg (angle between adjacent beams; outermost beams sit at +/- 2 * step from up)
+BEAM_BLAST_RANGE_MULT :: 0.5 // multiplier (unitless; per-beam length vs the vanilla laser's full vertical reach)
+BEAM_BLAST_DAMAGE_PER_BEAM :: 3 // hp/hit (lower than LASER_DAMAGE so all 5 beams overlapping cap volley damage at 15)
+
 RAPID_FIRE_INTERVAL :: 0.05 // s (between rapid-fire shots while attack is held; 20 shots/s for bullet-hell density)
 RAPID_FIRE_DAMAGE :: 3 // hp/hit (per rapid-fire bullet on enemy)
 RAPID_FIRE_SPEED :: 234.0 // px/s
@@ -266,7 +311,7 @@ LEVEL2_BETWEEN_3CYC_TARGET :: 3 // count (cyclops kills required to clear the 3-
 LEVEL2_BETWEEN_3CYC_SNEAK_INTERVAL :: 4.0 // s (cadence of streaming sneak spawns during the 3-cyclops gauntlet)
 LEVEL2_WAVES_TO_VICTORY :: 5 // count (level-2 phases the player must clear to trigger the victory screen; covers Wave1 → Between_1Cyc → Between_1Cyc_2Sneaks → Wave2 → Between_4Sneaks)
 
-MAX_LEVEL :: 2 // count (highest level with content; victory beyond this stays on the win screen until level 3 is wired in)
+MAX_LEVEL :: 3 // count (highest level the player can transition into; level 3 currently has only the wave-shader backdrop wired up — enemy content is TBD)
 
 PAUSE_OVERLAY_ALPHA :: 200 // alpha [0..255] (dim overlay drawn behind the pause menu)
 PAUSE_TITLE_FONT_SIZE :: 20 // px

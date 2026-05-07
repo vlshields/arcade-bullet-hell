@@ -36,7 +36,7 @@ reset_level2_pacing :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) {
 }
 
 update_level2_pacing :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool, dt: f32) {
-	if enemies.level < 2 {
+	if enemies.level != 2 {
 		return
 	}
 

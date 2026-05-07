@@ -10,14 +10,18 @@ Player_Anim :: enum {
 	Move_Side,
 }
 
-// Mutually-exclusive ability the player picks between missions. The mid-game
-// choice screen sets this; gameplay code branches on it.
+// Abilities the player accumulates between missions. The post-mission choice
+// screen adds one to the set; gameplay code branches on `in p.upgrades`.
+// Rapid_Fire and Beam_Blast both replace the laser, so they cannot coexist —
+// the picker filters one out when the other is already owned.
 Player_Upgrade :: enum {
-	None,
 	Slow_Time,
 	Dash_Frenzy,
 	Rapid_Fire,
+	Beam_Blast,
 }
+
+Player_Upgrade_Set :: bit_set[Player_Upgrade]
 
 Player :: struct {
 	pos:                rl.Vector2,
@@ -39,7 +43,7 @@ Player :: struct {
 	dash_trail:         [PLAYER_DASH_TRAIL_LEN]rl.Vector2,
 	dash_trail_count:   int,
 	dash_trail_fade:    f32,
-	upgrade:            Player_Upgrade,
+	upgrades:           Player_Upgrade_Set,
 	slow_time_active:   bool,
 	slow_time_phase:    f32,
 	shrink_bombs:       int,
@@ -83,7 +87,7 @@ init_player :: proc(p: ^Player) {
 	p.dash_velocity = {0, 0}
 	p.dash_trail_count = 0
 	p.dash_trail_fade = 0
-	p.upgrade = .None
+	p.upgrades = {}
 	p.slow_time_active = false
 	p.slow_time_phase = 0
 	p.shrink_bombs = SHRINK_BOMBS_PER_LEVEL
@@ -111,7 +115,7 @@ deploy_shrink_bomb :: proc(
 // and the player's own projectiles continue to use the raw dt.
 update_slow_time :: proc(p: ^Player, dt: f32) -> (world_dt: f32) {
 	p.slow_time_active = false
-	if p.upgrade != .Slow_Time {
+	if .Slow_Time not_in p.upgrades {
 		return dt
 	}
 	if !input_slow_time_held() {
@@ -163,7 +167,7 @@ unload_player :: proc(p: ^Player) {
 }
 
 dash_stamina_cost :: proc(p: ^Player) -> f32 {
-	if p.upgrade == .Dash_Frenzy {
+	if .Dash_Frenzy in p.upgrades {
 		return PLAYER_DASH_STAMINA_COST + DASH_FRENZY_EXTRA_STAMINA_COST
 	}
 	return PLAYER_DASH_STAMINA_COST
@@ -211,7 +215,7 @@ update_player :: proc(p: ^Player, missiles: ^Missile_Pool, audio: ^Audio, dt: f3
 			p.dash_trail_count = 0
 			p.dash_trail_fade = PLAYER_DASH_TRAIL_FADE_TIME
 			p.stamina -= dash_cost
-			if p.upgrade == .Dash_Frenzy {
+			if .Dash_Frenzy in p.upgrades {
 				launch_dash_missiles(missiles, {pcx, pcy}, dir)
 			}
 			play_dash_sfx(audio)
@@ -450,13 +454,18 @@ update_player_attack :: proc(
 		p.hold_time = 0
 	}
 
-	// Rapid Fire upgrade replaces the laser with a single straight-up projectile
-	// stream at higher cadence. Charge beam logic below still runs so a long hold
-	// charges and releases as before.
+	// Rapid Fire replaces the laser with a single straight-up projectile stream;
+	// Beam Blast replaces it with a 5-way short-range fan. Otherwise fall through
+	// to the vanilla single laser. The charge beam below still runs in all three
+	// cases that are not Rapid Fire — it shares the hold-to-fire input.
 	if held && p.fire_timer <= 0 {
-		if p.upgrade == .Rapid_Fire {
+		if .Rapid_Fire in p.upgrades {
 			p.fire_timer = RAPID_FIRE_INTERVAL
 			fire_rapid_burst(bullets, start)
+		} else if .Beam_Blast in p.upgrades {
+			p.fire_timer = LASER_FIRE_INTERVAL
+			fire_beam_blast(start, pcy, enemies, sneaks, boss, packs, particles, beams, score)
+			play_laser_sfx(audio)
 		} else {
 			p.fire_timer = LASER_FIRE_INTERVAL
 			fire_laser(start, end, pcy, enemies, sneaks, boss, packs, particles, beams, score)
@@ -467,7 +476,7 @@ update_player_attack :: proc(
 	// Once the player has held long enough, begin charging. Rapid Fire replaces
 	// the entire hold-to-attack mechanic, so the charge beam is unavailable then.
 	if held &&
-	   p.upgrade != .Rapid_Fire &&
+	   .Rapid_Fire not_in p.upgrades &&
 	   !p.charging &&
 	   p.hold_time >= CHARGE_BEAM_HOLD_DELAY &&
 	   p.stamina >= CHARGE_BEAM_FULL_STAMINA_COST {
@@ -521,6 +530,26 @@ fire_rapid_burst :: proc(bullets: ^Bullet_Pool, start: rl.Vector2) {
 	spawn_bullet(bullets, start, vel, rl.RED, .Rapid_Fire)
 }
 
+// Closest-point-on-segment distance vs radius. Used by laser collision so the
+// same routine handles the vanilla vertical beam and the angled Beam Blast fan.
+@(private = "file")
+beam_segment_hits :: proc(start, end, c: rl.Vector2, r: f32) -> bool {
+	seg := end - start
+	seg_len_sq := rl.Vector2DotProduct(seg, seg)
+	if seg_len_sq < 0.001 {
+		return rl.Vector2Distance(start, c) <= r
+	}
+	t := rl.Vector2DotProduct(c - start, seg) / seg_len_sq
+	if t < 0 {
+		t = 0
+	}
+	if t > 1 {
+		t = 1
+	}
+	closest := rl.Vector2{start.x + seg.x * t, start.y + seg.y * t}
+	return rl.Vector2Distance(closest, c) <= r
+}
+
 fire_laser :: proc(
 	start, end: rl.Vector2,
 	pcy: f32,
@@ -531,6 +560,7 @@ fire_laser :: proc(
 	particles: ^Particle_Pool,
 	beams: ^Beam_Pool,
 	score: ^int,
+	damage: int = LASER_DAMAGE,
 ) {
 	spawn_laser(beams, start, end)
 
@@ -543,10 +573,10 @@ fire_laser :: proc(
 		if ec.y > pcy {
 			continue
 		}
-		if abs(ec.x - start.x) > enemy_hit_radius(e) {
+		if !beam_segment_hits(start, end, ec, enemy_hit_radius(e)) {
 			continue
 		}
-		killed := damage_enemy(e, LASER_DAMAGE)
+		killed := damage_enemy(e, damage)
 		spawn_impact_particles(particles, ec, rl.RED, LASER_IMPACT_PARTICLES)
 		if killed {
 			score^ += SCORE_KILL_LASER
@@ -564,10 +594,10 @@ fire_laser :: proc(
 		if sc.y > pcy {
 			continue
 		}
-		if abs(sc.x - start.x) > sneak_hit_radius(s) {
+		if !beam_segment_hits(start, end, sc, sneak_hit_radius(s)) {
 			continue
 		}
-		killed := damage_sneak(s, LASER_DAMAGE)
+		killed := damage_sneak(s, damage)
 		spawn_impact_particles(particles, sc, rl.RED, LASER_IMPACT_PARTICLES)
 		if killed {
 			score^ += SCORE_KILL_LASER
@@ -578,14 +608,52 @@ fire_laser :: proc(
 
 	if boss.boss.active {
 		bc := boss_center(&boss.boss)
-		if bc.y <= pcy && abs(bc.x - start.x) <= BOSS_HIT_RADIUS {
-			killed := damage_boss(&boss.boss, LASER_DAMAGE)
+		if bc.y <= pcy && beam_segment_hits(start, end, bc, boss_hit_radius(&boss.boss)) {
+			killed := damage_boss(&boss.boss, damage)
 			spawn_impact_particles(particles, bc, rl.RED, LASER_IMPACT_PARTICLES)
 			if killed {
 				score^ += SCORE_KILL_BOSS
 				try_drop_healthpack(packs, bc)
 			}
 		}
+	}
+}
+
+// Fan of BEAM_BLAST_BEAM_COUNT short-range lasers symmetric around straight up.
+// Each beam reuses fire_laser so spawn + collision + scoring stay identical.
+// Per-beam damage is reduced (BEAM_BLAST_DAMAGE_PER_BEAM, not LASER_DAMAGE) so
+// a target overlapped by all 5 beams takes 15 dmg per volley, not 30.
+fire_beam_blast :: proc(
+	start: rl.Vector2,
+	pcy: f32,
+	enemies: ^Enemy_Pool,
+	sneaks: ^Sneak_Pool,
+	boss: ^Boss_Pool,
+	packs: ^HealthPack_Pool,
+	particles: ^Particle_Pool,
+	beams: ^Beam_Pool,
+	score: ^int,
+) {
+	range := pcy * BEAM_BLAST_RANGE_MULT
+	half := BEAM_BLAST_BEAM_COUNT / 2
+	for i in 0 ..< BEAM_BLAST_BEAM_COUNT {
+		angle_deg := f32(i - half) * BEAM_BLAST_ANGLE_STEP_DEG
+		rad := angle_deg * math.PI / 180
+		dir := rl.Vector2{math.sin(rad), -math.cos(rad)}
+		end := rl.Vector2{start.x + dir.x * range, start.y + dir.y * range}
+		fire_laser(
+			start,
+			end,
+			pcy,
+			enemies,
+			sneaks,
+			boss,
+			packs,
+			particles,
+			beams,
+			score,
+			BEAM_BLAST_DAMAGE_PER_BEAM,
+		)
 	}
 }
 
@@ -647,7 +715,7 @@ fire_charge_beam :: proc(
 
 	if boss.boss.active {
 		bc := boss_center(&boss.boss)
-		if bc.y <= b.start.y && abs(bc.x - pcx) <= half_width + BOSS_HIT_RADIUS {
+		if bc.y <= b.start.y && abs(bc.x - pcx) <= half_width + boss_hit_radius(&boss.boss) {
 			killed := damage_boss(&boss.boss, damage)
 			spawn_impact_particles(particles, bc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 			if killed {

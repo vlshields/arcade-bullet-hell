@@ -251,7 +251,7 @@ try_hit_missile :: proc(
 	}
 	if boss.boss.active {
 		bc := boss_center(&boss.boss)
-		r := f32(BOSS_HIT_RADIUS) + MISSILE_HIT_RADIUS
+		r := boss_hit_radius(&boss.boss) + MISSILE_HIT_RADIUS
 		dx := m.pos.x - bc.x
 		dy := m.pos.y - bc.y
 		if dx * dx + dy * dy <= r * r {
