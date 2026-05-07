@@ -163,17 +163,6 @@ advance_phase :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) {
 }
 
 @(private = "file")
-any_weirdguy_alive :: proc(enemies: ^Enemy_Pool) -> bool {
-	for i in 0 ..< ENEMY_COUNT {
-		e := &enemies.enemies[i]
-		if e.active && e.kind == .WeirdGuy {
-			return true
-		}
-	}
-	return false
-}
-
-@(private = "file")
 count_cyclops_alive :: proc(sneaks: ^Sneak_Pool) -> int {
 	n := 0
 	for i in 0 ..< SNEAK_MAX {

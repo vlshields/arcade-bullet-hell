@@ -13,6 +13,7 @@ Game_State :: struct {
 	enemies:            Enemy_Pool,
 	sneaks:             Sneak_Pool,
 	boss:               Boss_Pool,
+	pillars:            Pillar_Wave,
 	healthpacks:        HealthPack_Pool,
 	bullets:            Bullet_Pool,
 	beams:              Beam_Pool,
@@ -75,6 +76,7 @@ init :: proc() {
 	init_enemies(&gs.enemies)
 	init_sneaks(&gs.sneaks)
 	init_boss(&gs.boss)
+	init_pillars(&gs.pillars)
 	init_healthpacks(&gs.healthpacks)
 
 	gs.running = true
@@ -138,6 +140,16 @@ update :: proc() {
 			open_upgrade_choice()
 		}
 
+		// Level 4 mirrors the level-2 wave-count gate; no boss, just the four
+		// scripted alternating waves.
+		if gs.level == 4 &&
+		   gs.enemies.level4_waves_complete >= LEVEL4_WAVES_TO_VICTORY &&
+		   !gs.victory {
+			gs.victory = true
+			clear_world()
+			open_upgrade_choice()
+		}
+
 		if gs.victory && gs.choosing_upgrade {
 			n := gs.upgrade_choice_count
 			step := input_menu_step_x()
@@ -193,9 +205,11 @@ update :: proc() {
 				}
 				update_player(&gs.player, &gs.missiles, &gs.audio, dt)
 				update_level2_pacing(&gs.enemies, &gs.sneaks, world_dt)
+				update_level4_pacing(&gs.enemies, &gs.pillars, world_dt)
 				update_enemies(&gs.enemies, &gs.boss, &gs.bullets, &gs.player, world_dt)
 				update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, world_dt)
 				update_boss(&gs.boss, &gs.bullets, &gs.sneaks, world_dt)
+				update_pillars(&gs.pillars, &gs.bullets, world_dt)
 				update_player_attack(
 					&gs.player,
 					&gs.beams,
@@ -203,6 +217,7 @@ update :: proc() {
 					&gs.enemies,
 					&gs.sneaks,
 					&gs.boss,
+					&gs.pillars,
 					&gs.healthpacks,
 					&gs.particles,
 					&gs.audio,
@@ -215,6 +230,7 @@ update :: proc() {
 					&gs.enemies,
 					&gs.sneaks,
 					&gs.boss,
+					&gs.pillars,
 					&gs.healthpacks,
 					&gs.particles,
 					&gs.score,
@@ -224,6 +240,7 @@ update :: proc() {
 					&gs.enemies,
 					&gs.sneaks,
 					&gs.boss,
+					&gs.pillars,
 					&gs.healthpacks,
 					&gs.particles,
 					&gs.score,
@@ -237,6 +254,7 @@ update :: proc() {
 					&gs.enemies,
 					&gs.sneaks,
 					&gs.boss,
+					&gs.pillars,
 					&gs.healthpacks,
 					&gs.particles,
 					&gs.score,
@@ -246,6 +264,19 @@ update :: proc() {
 		}
 	}
 
+	// Golgatha's bullet-hell sfx is a pre-rendered loop tied to boss presence —
+	// keep it ticking while she's actively firing, and stop on pause / victory /
+	// transition / defeat / Morgan so it never bleeds across screens.
+	if gs.boss.boss.active &&
+	   gs.boss.boss.kind == .Golgatha &&
+	   !gs.paused &&
+	   !gs.victory &&
+	   !gs.transitioning {
+		tick_golgotha_bullet_hell_sfx(&gs.audio)
+	} else {
+		stop_golgotha_bullet_hell_sfx(&gs.audio)
+	}
+
 	rl.BeginTextureMode(gs.render_target)
 	rl.ClearBackground(rl.BLACK)
 	draw_background(&gs.background)
@@ -253,6 +284,7 @@ update :: proc() {
 	draw_enemies(&gs.enemies)
 	draw_sneaks(&gs.sneaks)
 	draw_boss(&gs.boss)
+	draw_pillars(&gs.pillars)
 	draw_player(&gs.player)
 	draw_bullets(&gs.bullets)
 	draw_healthpacks(&gs.healthpacks)
@@ -298,6 +330,7 @@ shutdown :: proc() {
 	unload_enemies(&gs.enemies)
 	unload_sneaks(&gs.sneaks)
 	unload_boss(&gs.boss)
+	unload_pillars(&gs.pillars)
 	unload_player(&gs.player)
 	unload_background(&gs.background)
 	unload_audio(&gs.audio)
@@ -361,6 +394,7 @@ clear_world :: proc() {
 	for i in 0 ..< HEALTHPACK_MAX {
 		gs.healthpacks.packs[i].active = false
 	}
+	clear_pillars(&gs.pillars)
 	// Beam slot the player was charging into is now inactive; reset attack state.
 	gs.player.charging = false
 	gs.player.charge_beam_idx = -1
@@ -597,6 +631,9 @@ advance_to_next_mission :: proc() {
 	}
 	if gs.level == 3 {
 		spawn_morgan(&gs.boss)
+	}
+	if gs.level == 4 {
+		reset_level4_pacing(&gs.enemies)
 	}
 	gs.player.hp = PLAYER_MAX_HP
 	gs.player.shrink_bombs = SHRINK_BOMBS_PER_LEVEL

@@ -70,6 +70,7 @@ update_missiles :: proc(
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
 	boss: ^Boss_Pool,
+	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
 	score: ^int,
@@ -89,7 +90,7 @@ update_missiles :: proc(
 				m.blind_time = 0
 			}
 		} else {
-			target, found := nearest_target(m.pos, enemies, sneaks, boss)
+			target, found := nearest_target(m.pos, enemies, sneaks, boss, pillars)
 			if found {
 				speed := rl.Vector2Length(m.vel)
 				if speed > 0.001 {
@@ -127,7 +128,7 @@ update_missiles :: proc(
 		}
 
 		// Collision: first hit detonates the missile.
-		if try_hit_missile(m, enemies, sneaks, boss, packs, particles, score) {
+		if try_hit_missile(m, enemies, sneaks, boss, pillars, packs, particles, score) {
 			m.active = false
 		}
 	}
@@ -150,6 +151,7 @@ nearest_target :: proc(
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
 	boss: ^Boss_Pool,
+	pillars: ^Pillar_Wave,
 ) -> (
 	target: rl.Vector2,
 	found: bool,
@@ -196,6 +198,26 @@ nearest_target :: proc(
 			found = true
 		}
 	}
+	// Pillars are valid homing targets like any other enemy — wrong-order locks
+	// just waste the missile on a blocked impact, which is the cost of firing
+	// without aiming. The kill-order puzzle stays intact.
+	if pillars.phase == .Combat {
+		for i in 0 ..< PILLAR_COUNT {
+			p := &pillars.pillars[i]
+			if !p.active {
+				continue
+			}
+			pc := pillar_center(p)
+			dx := pc.x - from.x
+			dy := pc.y - from.y
+			d_sq := dx * dx + dy * dy
+			if d_sq < best_d_sq {
+				best_d_sq = d_sq
+				target = pc
+				found = true
+			}
+		}
+	}
 	return
 }
 
@@ -205,6 +227,7 @@ try_hit_missile :: proc(
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
 	boss: ^Boss_Pool,
+	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
 	score: ^int,
@@ -263,6 +286,29 @@ try_hit_missile :: proc(
 			}
 			return true
 		}
+	}
+	for i in 0 ..< PILLAR_COUNT {
+		p := &pillars.pillars[i]
+		if !p.active {
+			continue
+		}
+		pc := pillar_center(p)
+		r := pillar_hit_radius(p) + MISSILE_HIT_RADIUS
+		dx := m.pos.x - pc.x
+		dy := m.pos.y - pc.y
+		if dx * dx + dy * dy > r * r {
+			continue
+		}
+		applied, killed := damage_pillar(pillars, i, MISSILE_DAMAGE)
+		if applied {
+			spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
+			if killed {
+				score^ += PILLAR_KILL_SCORE
+			}
+		} else {
+			spawn_impact_particles(particles, m.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
+		}
+		return true
 	}
 	return false
 }

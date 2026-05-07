@@ -427,6 +427,7 @@ update_player_attack :: proc(
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
 	boss: ^Boss_Pool,
+	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
 	audio: ^Audio,
@@ -475,6 +476,16 @@ update_player_attack :: proc(
 		}
 	}
 
+	// Rapid-fire sfx is a pre-rendered loop, not a per-shot trigger — keep it
+	// alive while attack is held and stop it the instant the player releases.
+	if .Rapid_Fire in p.upgrades {
+		if held {
+			tick_rapid_fire_sfx(audio)
+		} else {
+			stop_rapid_fire_sfx(audio)
+		}
+	}
+
 	// Once the player has held long enough, begin charging. Rapid Fire replaces
 	// the entire hold-to-attack mechanic, so the charge beam is unavailable then.
 	if held &&
@@ -514,7 +525,7 @@ update_player_attack :: proc(
 
 	if input_attack_released() {
 		release_charge_beam(b)
-		fire_charge_beam(b, p.charge, enemies, sneaks, boss, packs, particles, score)
+		fire_charge_beam(b, p.charge, enemies, sneaks, boss, pillars, packs, particles, score)
 		p.stamina -= CHARGE_BEAM_FULL_STAMINA_COST * p.charge
 		if p.stamina < 0 {
 			p.stamina = 0
@@ -556,6 +567,7 @@ fire_charge_beam :: proc(
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
 	boss: ^Boss_Pool,
+	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
 	score: ^int,
@@ -615,6 +627,29 @@ fire_charge_beam :: proc(
 				score^ += SCORE_KILL_BOSS
 				try_drop_healthpack(packs, bc)
 			}
+		}
+	}
+
+	for i in 0 ..< PILLAR_COUNT {
+		p := &pillars.pillars[i]
+		if !p.active {
+			continue
+		}
+		pc := pillar_center(p)
+		if pc.y > b.start.y {
+			continue
+		}
+		if abs(pc.x - pcx) > half_width + pillar_hit_radius(p) {
+			continue
+		}
+		applied, killed := damage_pillar(pillars, i, damage)
+		if applied {
+			spawn_impact_particles(particles, pc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
+			if killed {
+				score^ += PILLAR_KILL_SCORE
+			}
+		} else {
+			spawn_impact_particles(particles, pc, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
 		}
 	}
 

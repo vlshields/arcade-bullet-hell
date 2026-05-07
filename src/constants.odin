@@ -84,7 +84,7 @@ WEIRDGUY_Y_MAX :: 200.0 // px (random spawn altitude upper bound; keeps weird gu
 WEIRDGUY_FIRE_INTERVAL :: 0.08 // s (between single-bullet shots; "extremely rapid")
 WEIRDGUY_BULLET_SPEED :: 100.0 // px/s
 
-BOSS_TRIGGER_WAVE :: 6 // count (grunt waves cleared before Golgatha spawns)
+BOSS_TRIGGER_WAVE :: 4 // count (grunt waves cleared before Golgatha spawns)
 BOSS_MAX_HP :: 110 // hp
 BOSS_FRAME_W :: 32 // px (sprite source)
 BOSS_FRAME_H :: 32 // px (sprite source)
@@ -95,8 +95,9 @@ BOSS_HIT_RADIUS :: 16.0 // px
 BOSS_HIT_FLASH_TIME :: 0.08 // s
 BOSS_SPAWN_X :: 320.0 // px (anchor x; SCREEN_WIDTH / 2)
 BOSS_SPAWN_Y :: 60.0 // px (anchor y, fixed; sway only on x)
-BOSS_SWAY_AMPLITUDE :: 38.0 // px 
+BOSS_SWAY_AMPLITUDE :: 38.0 // px
 BOSS_SWAY_FREQ :: 0.8 // Hz (brisk side-to-side cadence)
+BOSS_FIGURE8_Y_RATIO :: 0.5 // multiplier (unitless; peak vertical drift = sway_amp * 0.5 * this; shared by both bosses)
 BOSS_FIRE_INTERVAL :: 0.033 // s (matches bhport reference: 2 frames @ 60fps)
 BOSS_BULLET_ROWS :: 6 // count (matches bhport reference default)
 BOSS_ANGLE_INCREMENT_DEG :: 5.0 // deg/burst (rotation of base direction; matches bhport reference)
@@ -312,7 +313,31 @@ LEVEL2_BETWEEN_3CYC_TARGET :: 3 // count (cyclops kills required to clear the 3-
 LEVEL2_BETWEEN_3CYC_SNEAK_INTERVAL :: 4.0 // s (cadence of streaming sneak spawns during the 3-cyclops gauntlet)
 LEVEL2_WAVES_TO_VICTORY :: 5 // count (level-2 phases the player must clear to trigger the victory screen; covers Wave1 → Between_1Cyc → Between_1Cyc_2Sneaks → Wave2 → Between_4Sneaks)
 
-MAX_LEVEL :: 3 // count (highest level the player can transition into; level 3 currently has only the wave-shader backdrop wired up — enemy content is TBD)
+LEVEL4_GRUNT_FIRE_INTERVAL :: 1.5 // s (level-4 grunt fire cadence — "faster variation" of the level-1 grunt rule, applied from the first wave)
+LEVEL4_WAVES_TO_VICTORY :: 4 // count (level-4 phases the player must clear: grunt → weirdguy → grunt → pillars)
+
+PILLAR_COUNT :: 4 // count (pillars per finale wave; one per screen corner)
+PILLAR_HP :: 50 // hp (per pillar; only the next-in-order pillar takes damage at any time)
+PILLAR_FRAME_W :: 16 // px (sprite source)
+PILLAR_FRAME_H :: 16 // px (sprite source)
+PILLAR_FRAMES :: 4 // count (idle animation frames in enemy_pillar.png)
+PILLAR_ANIM_FPS :: 6.0 // frames/s
+PILLAR_DRAW_SCALE :: 2 // multiplier (unitless)
+PILLAR_HIT_RADIUS :: 12.0 // px (slightly larger than the visible body — the order puzzle is the difficulty, not aim)
+PILLAR_HIT_FLASH_TIME :: 0.08 // s
+PILLAR_CORNER_MARGIN :: 36.0 // px (from screen edges to pillar center at each corner)
+PILLAR_REVEAL_DUR :: 2.0 // s (numbers visible above each pillar on spawn)
+PILLAR_SHUFFLE_DUR :: 1.4 // s (each shuffle's lerp time; total preamble = REVEAL + SHUFFLE_DUR * SHUFFLE_COUNT)
+PILLAR_SHUFFLE_COUNT :: 2 // count (number of consecutive shuffles before combat starts)
+PILLAR_NUMBER_FONT_SIZE :: 20 // px (kill-order digit drawn above each pillar during reveal)
+PILLAR_FIRE_INTERVAL :: 0.1 // s (per-pillar burst cadence during combat)
+PILLAR_BULLETS_PER_BURST :: 3 // count (bullets emitted per burst, evenly spaced around the pillar)
+PILLAR_ANGLE_INC_DEG :: 8.0 // deg/burst (rotation of base angle; multiplied by spin_dir per corner)
+PILLAR_BULLET_SPEED :: 75.0 // px/s
+PILLAR_BLOCKED_PARTICLES :: 3 // count (small white burst when a wrong-order shot is absorbed)
+PILLAR_KILL_SCORE :: 50 // points (per pillar killed)
+
+MAX_LEVEL :: 4 // count (highest level the player can transition into; level 3 is the Morgan boss, level 4 alternates grunt and weirdguy waves)
 
 PAUSE_OVERLAY_ALPHA :: 200 // alpha [0..255] (dim overlay drawn behind the pause menu)
 PAUSE_TITLE_FONT_SIZE :: 20 // px

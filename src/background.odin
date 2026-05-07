@@ -33,7 +33,7 @@ set_background_level :: proc(bg: ^Background, level: int) {
 		bg.textures[i] = {}
 		bg.offsets[i] = 0
 	}
-	bg.shader_mode = level >= 3
+	bg.shader_mode = level == 3
 	bg.seconds = 0
 	load_bg_textures(bg, level)
 }
@@ -43,10 +43,11 @@ bg_path :: proc(level: int, i: int) -> cstring {
 	if level <= 1 {
 		return fmt.ctprintf("assets/parallaxbg%d.png", i)
 	}
-	if level >= 3 {
+	if level == 3 {
 		return "assets/level3_bg.png"
 	}
-	return fmt.ctprintf("assets/level%d_parallaxbg%d.png", level, i)
+	// Level 4 reuses the level-2 parallax stack for now.
+	return fmt.ctprintf("assets/level2_parallaxbg%d.png", i)
 }
 
 // The bg0 file may be a stacked atlas of all BG_LAYERS frames (one per

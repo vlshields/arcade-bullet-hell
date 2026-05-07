@@ -242,6 +242,7 @@ collide_bullets_enemies :: proc(
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
 	boss: ^Boss_Pool,
+	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
 	score: ^int,
@@ -308,6 +309,34 @@ collide_bullets_enemies :: proc(
 				hit = true
 				break
 			}
+		}
+		if hit {
+			continue
+		}
+		for pi in 0 ..< PILLAR_COUNT {
+			p := &pillars.pillars[pi]
+			if !p.active {
+				continue
+			}
+			pc := pillar_center(p)
+			r := pillar_hit_radius(p) + BULLET_RADIUS
+			dx := b.pos.x - pc.x
+			dy := b.pos.y - pc.y
+			if dx * dx + dy * dy > r * r {
+				continue
+			}
+			applied, killed := damage_pillar(pillars, pi, damage)
+			if applied {
+				spawn_impact_particles(particles, pc, impact_color, REFLECT_IMPACT_PARTICLES)
+				if killed {
+					score^ += PILLAR_KILL_SCORE
+				}
+			} else {
+				spawn_impact_particles(particles, pc, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
+			}
+			b.active = false
+			hit = true
+			break
 		}
 		if hit {
 			continue

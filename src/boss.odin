@@ -176,8 +176,13 @@ update_boss :: proc(pool: ^Boss_Pool, bullets: ^Bullet_Pool, sneaks: ^Sneak_Pool
 	if b.sway_phase >= math.TAU {
 		b.sway_phase -= math.TAU
 	}
-	b.pos.x = BOSS_SPAWN_X + math.sin(b.sway_phase) * BOSS_SWAY_AMPLITUDE
-	b.pos.y = BOSS_SPAWN_Y
+	// Gerono lemniscate (figure-8 lying on its side): sin*cos = sin(2t)/2 puts the
+	// vertical drift at twice the horizontal cadence so the boss cuts a smooth ∞
+	// instead of sliding flat across the screen.
+	sx := math.sin(b.sway_phase)
+	cx := math.cos(b.sway_phase)
+	b.pos.x = BOSS_SPAWN_X + sx * BOSS_SWAY_AMPLITUDE
+	b.pos.y = BOSS_SPAWN_Y + sx * cx * BOSS_SWAY_AMPLITUDE * BOSS_FIGURE8_Y_RATIO
 
 	b.frame_time += dt
 	frame_dur: f32 = 1.0 / BOSS_ANIM_FPS
@@ -348,8 +353,10 @@ update_morgan :: proc(b: ^Boss, bullets: ^Bullet_Pool, sneaks: ^Sneak_Pool, dt: 
 	if b.sway_phase >= math.TAU {
 		b.sway_phase -= math.TAU
 	}
-	b.pos.x = MORGAN_SPAWN_X + math.sin(b.sway_phase) * sway_amp
-	b.pos.y = MORGAN_SPAWN_Y
+	sx := math.sin(b.sway_phase)
+	cx := math.cos(b.sway_phase)
+	b.pos.x = MORGAN_SPAWN_X + sx * sway_amp
+	b.pos.y = MORGAN_SPAWN_Y + sx * cx * sway_amp * BOSS_FIGURE8_Y_RATIO
 
 	b.frame_time += dt
 	frame_dur: f32 = 1.0 / MORGAN_ANIM_FPS

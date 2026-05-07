@@ -53,6 +53,10 @@ Enemy_Pool :: struct {
 	level2_prev_cyc_alive:  int,
 	level2_sneak_timer:     f32,
 	level2_waves_complete:  int,
+	// Level-4 pacing state. See level4.odin.
+	level4_phase:           Level4_Phase,
+	level4_phase_started:   bool,
+	level4_waves_complete:  int,
 }
 
 init_enemies :: proc(pool: ^Enemy_Pool) {
@@ -113,6 +117,36 @@ spawn_weirdguys_for_phase :: proc(pool: ^Enemy_Pool) {
 		pool.enemies[i].active = false
 	}
 	spawn_weirdguy_wave(pool)
+}
+
+// Mirror of spawn_weirdguys_for_phase for level 4's grunt waves. spawn_grunt_wave
+// only writes the first GRUNT_WAVE_COUNT slots, so this clears trailing slots
+// from a prior weirdguy wave first to avoid leftover patrol enemies.
+spawn_grunts_for_phase :: proc(pool: ^Enemy_Pool) {
+	for i in 0 ..< ENEMY_COUNT {
+		pool.enemies[i].active = false
+	}
+	spawn_grunt_wave(pool)
+}
+
+any_grunt_alive :: proc(pool: ^Enemy_Pool) -> bool {
+	for i in 0 ..< ENEMY_COUNT {
+		e := &pool.enemies[i]
+		if e.active && e.kind == .Grunt {
+			return true
+		}
+	}
+	return false
+}
+
+any_weirdguy_alive :: proc(pool: ^Enemy_Pool) -> bool {
+	for i in 0 ..< ENEMY_COUNT {
+		e := &pool.enemies[i]
+		if e.active && e.kind == .WeirdGuy {
+			return true
+		}
+	}
+	return false
 }
 
 @(private = "file")

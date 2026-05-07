@@ -121,6 +121,11 @@ try_spawn_sneak :: proc(pool: ^Sneak_Pool) {
 		}
 		return
 	}
+	if pool.level == 4 {
+		// Level 4 is grunts + weirdguys only — kill drops should not bleed minor
+		// enemies into the wave. Prevents stale level2_phase state from leaking.
+		return
+	}
 	switch pool.level2_phase {
 	case .Wave1_WG_Only,
 	     .Between_1Cyclops,

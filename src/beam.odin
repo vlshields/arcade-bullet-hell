@@ -142,6 +142,7 @@ collide_beams_enemies :: proc(
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
 	boss: ^Boss_Pool,
+	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
 	score: ^int,
@@ -190,6 +191,31 @@ collide_beams_enemies :: proc(
 				score^ += SCORE_KILL_LASER
 				try_spawn_sneak(sneaks)
 				try_drop_healthpack(packs, sc)
+			}
+			hit = true
+			break
+		}
+		if hit {
+			b.active = false
+			continue
+		}
+		for pi in 0 ..< PILLAR_COUNT {
+			p := &pillars.pillars[pi]
+			if !p.active {
+				continue
+			}
+			pc := pillar_center(p)
+			if !beam_segment_hits(b.start, b.end, pc, pillar_hit_radius(p)) {
+				continue
+			}
+			applied, killed := damage_pillar(pillars, pi, b.damage)
+			if applied {
+				spawn_impact_particles(particles, pc, rl.RED, LASER_IMPACT_PARTICLES)
+				if killed {
+					score^ += PILLAR_KILL_SCORE
+				}
+			} else {
+				spawn_impact_particles(particles, pc, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
 			}
 			hit = true
 			break
