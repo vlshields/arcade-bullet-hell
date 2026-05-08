@@ -2,7 +2,9 @@ package game
 
 import "core:math"
 import rl "vendor:raylib"
+import "core:encoding/json"
 import "core:fmt"
+import "core:log"
 import "core:math/rand"
 import "core:strings"
 
@@ -1232,11 +1234,30 @@ Dialogue_Line :: struct {
 	text:    string,
 }
 
+// Mirrors the schema in assets/dialogue/scenes_level1/hints.json. Field names
+// match the JSON keys exactly so json.unmarshal can populate them without tags.
+// Only the fields actually consumed at runtime are listed; unused fields in the
+// source file (wave_id, actions, can_fast_forward, etc.) are silently ignored.
+Dialogue_Source_Line :: struct {
+	speaker: string,
+	line_id: string,
+	text:    string,
+}
+
+Dialogue_Source_Scene :: struct {
+	scene_id: string,
+	lines:    []Dialogue_Source_Line,
+}
+
+Dialogue_Source :: struct {
+	scenes: []Dialogue_Source_Scene,
+}
+
 Dialogue :: struct {
 	active:           bool,
 	intro_done:       bool, // level-1 hint_01 fires once per run
 	wave2_intro_done: bool, // level-1 hint_02 fires once per run, before wave 2
-	lines:            [4]Dialogue_Line,
+	lines:            [8]Dialogue_Line,
 	line_count:       int,
 	line_idx:         int,
 	atoms_revealed:   int,
@@ -1245,6 +1266,10 @@ Dialogue :: struct {
 	icon_frame_t:     f32,
 	paprika_tex:      rl.Texture2D,
 	zombi_tex:        rl.Texture2D,
+	// Parsed scene data from assets/dialogue/scenes_level1/hints.json. Owned for
+	// the lifetime of the game; text strings inside are referenced by d.lines.
+	level1_scenes:    Dialogue_Source,
+	level1_raw:       []byte,
 }
 
 init_dialogue :: proc(d: ^Dialogue) {
@@ -1252,23 +1277,91 @@ init_dialogue :: proc(d: ^Dialogue) {
 	d.zombi_tex = rl.LoadTexture("assets/sprites/player_dialogue_box_icon.png")
 	rl.SetTextureFilter(d.paprika_tex, .POINT)
 	rl.SetTextureFilter(d.zombi_tex, .POINT)
+
+	load_dialogue_source(&d.level1_scenes, &d.level1_raw, "assets/dialogue/scenes_level1/hints.json")
 }
 
 unload_dialogue :: proc(d: ^Dialogue) {
 	rl.UnloadTexture(d.paprika_tex)
 	rl.UnloadTexture(d.zombi_tex)
+	if d.level1_raw != nil {
+		delete(d.level1_raw)
+		d.level1_raw = nil
+	}
+}
+
+@(private = "file")
+load_dialogue_source :: proc(out: ^Dialogue_Source, raw_out: ^[]byte, path: string) {
+	data, ok := read_entire_file(path, context.allocator)
+	if !ok {
+		log.errorf("dialogue: failed to read %v", path)
+		return
+	}
+	raw_out^ = data
+	if err := json.unmarshal(data, out); err != nil {
+		log.errorf("dialogue: failed to parse %v: %v", path, err)
+	}
+}
+
+@(private = "file")
+find_scene :: proc(src: ^Dialogue_Source, scene_id: string) -> (^Dialogue_Source_Scene, bool) {
+	for i in 0 ..< len(src.scenes) {
+		if src.scenes[i].scene_id == scene_id {
+			return &src.scenes[i], true
+		}
+	}
+	return nil, false
+}
+
+@(private = "file")
+parse_speaker :: proc(s: string) -> (Dialogue_Speaker, bool) {
+	switch s {
+	case "captain_paprika":
+		return .Paprika, true
+	case "player_zombi":
+		return .Zombi, true
+	}
+	return .Paprika, false
+}
+
+// Loads a scene's lines into d.lines verbatim from the parsed JSON. Speaker
+// strings map to the enum; text is kept exactly as authored (no edits, no
+// substitutions). Returns the count loaded, or 0 if the scene is missing.
+@(private = "file")
+load_scene :: proc(d: ^Dialogue, scene_id: string) -> int {
+	scene, ok := find_scene(&d.level1_scenes, scene_id)
+	if !ok {
+		log.errorf("dialogue: scene %v not found", scene_id)
+		return 0
+	}
+	n := 0
+	for src_line in scene.lines {
+		if n >= len(d.lines) {
+			log.warnf("dialogue: scene %v has more lines than buffer (%d)", scene_id, len(d.lines))
+			break
+		}
+		spk, sok := parse_speaker(src_line.speaker)
+		if !sok {
+			log.warnf("dialogue: unknown speaker %q in scene %v", src_line.speaker, scene_id)
+		}
+		d.lines[n] = Dialogue_Line {
+			speaker = spk,
+			text    = src_line.text,
+		}
+		n += 1
+	}
+	return n
 }
 
 start_level1_intro :: proc(d: ^Dialogue) {
 	if d.intro_done {
 		return
 	}
-	d.lines[0] = Dialogue_Line {
-		speaker = .Paprika,
-		text    = "It's quiet... Too quiet. Zombi, fire your lasers {attack} to take 'em out",
+	n := load_scene(d, "hint_01")
+	if n == 0 {
+		return
 	}
-	d.lines[1] = Dialogue_Line{speaker = .Zombi, text = "Roger that."}
-	d.line_count = 2
+	d.line_count = n
 	dialogue_begin(d)
 	d.intro_done = true
 }
@@ -1277,19 +1370,11 @@ start_level1_wave2_intro :: proc(d: ^Dialogue) {
 	if d.wave2_intro_done {
 		return
 	}
-	d.lines[0] = Dialogue_Line {
-		speaker = .Zombi,
-		text    = "Grr, there's bullets everywhere!",
+	n := load_scene(d, "hint_02")
+	if n == 0 {
+		return
 	}
-	d.lines[1] = Dialogue_Line {
-		speaker = .Paprika,
-		text    = "Evade them by dashing {dash} - dash into a bullet to reflect it!",
-	}
-	d.lines[2] = Dialogue_Line {
-		speaker = .Paprika,
-		text    = "Try your special shrink ability {shrink} too!",
-	}
-	d.line_count = 3
+	d.line_count = n
 	dialogue_begin(d)
 	d.wave2_intro_done = true
 }
@@ -1312,14 +1397,12 @@ line_atom_count :: proc(text: string) -> int {
 	i := 0
 	for i < len(text) {
 		if text[i] == '{' {
-			for i < len(text) && text[i] != '}' {
-				i += 1
+			rel := strings.index_byte(text[i:], '}')
+			if rel >= 0 {
+				i += rel + 1
+				n += 1
+				continue
 			}
-			if i < len(text) {
-				i += 1
-			}
-			n += 1
-			continue
 		}
 		n += 1
 		i += 1
@@ -1428,6 +1511,10 @@ draw_dialogue :: proc(d: ^Dialogue) {
 	draw_dialogue_text(line.text, d.atoms_revealed, text_x0, text_y0, text_w, line_h)
 }
 
+// Recognized inline tokens in dialogue text:
+//   {attack} {dash} {shrink} {slow} {confirm}
+// Renders as a device-aware input-hint icon (kb vs gamepad). Unrecognized
+// tokens fall through and render literally so authoring mistakes are visible.
 @(private = "file")
 token_to_hint :: proc(token: string) -> (Input_Hint, bool) {
 	switch token {
@@ -1465,18 +1552,21 @@ draw_dialogue_text :: proc(text: string, atoms_revealed: int, x0, y0, w, line_h:
 			rel_close := strings.index_byte(text[i:], '}')
 			if rel_close >= 0 {
 				token := text[i + 1:i + rel_close]
-				hint, _ := token_to_hint(token)
-				token_w := input_hint_width(hint, DIALOGUE_INLINE_HINT_SIZE)
-				if cur_x + token_w > x0 + w {
-					cur_x = x0
-					cur_y += line_h
+				if hint, ok := token_to_hint(token); ok {
+					token_w := input_hint_width(hint, DIALOGUE_INLINE_HINT_SIZE)
+					if cur_x + token_w > x0 + w {
+						cur_x = x0
+						cur_y += line_h
+					}
+					icon_y := cur_y + (font_size - DIALOGUE_INLINE_HINT_SIZE) / 2
+					_ = draw_input_hint(hint, cur_x, icon_y, DIALOGUE_INLINE_HINT_SIZE)
+					cur_x += token_w
+					i += rel_close + 1
+					drawn += 1
+					continue
 				}
-				icon_y := cur_y + (font_size - DIALOGUE_INLINE_HINT_SIZE) / 2
-				_ = draw_input_hint(hint, cur_x, icon_y, DIALOGUE_INLINE_HINT_SIZE)
-				cur_x += token_w
-				i += rel_close + 1
-				drawn += 1
-				continue
+				// Unrecognized token — fall through and render the '{' literally
+				// so authoring mistakes are visible in-game.
 			}
 		}
 

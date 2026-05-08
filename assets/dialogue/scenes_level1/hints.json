@@ -10,7 +10,7 @@
                     "speaker": "captain_paprika",
                     "line_id": "paprika_hint_01",
                     "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
-                    "text": "It's quiet... Too quiet. Zombi, fire your lasers [insert_input-hint-attack_icon] to take 'em out"
+                    "text": "It's quiet... Too quiet. Zombi, fire your lasers {attack} to take 'em out"
                 },
                 {
                     "speaker": "player_zombi",
@@ -49,13 +49,13 @@
                     "speaker": "captain_paprika",
                     "line_id": "paprika_hint_02",
                     "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
-                    "text": "You can evade the bullets by dashing [input hint icon], and if you dash into a bullet you will reflect it!"
+                    "text": "You can evade the bullets by dashing {dash}, and if you dash into a bullet you will reflect it!"
                 },
                 {
                     "speaker": "captain_paprika",
                     "line_id": "paprika_hint_03",
                     "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
-                    "text": "Try also using your special shrink ability [input hint icon]!"
+                    "text": "Try also using your special shrink ability {shrink}!"
                    
                 }
        
