@@ -1,0 +1,84 @@
+{
+    "scenes": [
+        {
+            "scene_id": "hint_01",
+            "wave_id": [
+                { "id": "01", "when": "before", "once_completed": "wave_begins" }
+            ],
+            "lines": [
+                {
+                    "speaker": "captain_paprika",
+                    "line_id": "paprika_hint_01",
+                    "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
+                    "text": "It's quiet... Too quiet. Zombi, fire your lasers [insert_input-hint-attack_icon] to take 'em out"
+                },
+                {
+                    "speaker": "player_zombi",
+                    "line_id": "zombi_line_01",
+                    "dialogue_box_animation": "player_zombi_dialogue_icon.png",
+                    "text": "Roger that."
+                }
+            ],
+            "can_fast_forward": false,
+            "actions": [
+                {
+                    "line_id": "paprika_hint_01",
+                    "input_hint": "gamepad_a/keeb_enter",
+                    "next": "zombi_line_01"
+                },
+                {
+                    "line_id": "zombi_line_01",
+                    "input_hint": "gamepad_a/keeb_enter",
+                    "next": "end"
+                }
+            ]
+        },
+        {
+            "scene_id": "hint_02",
+            "wave_id": [
+                { "id": "02", "when": "before", "once_completed": "wave_begins" }
+            ],
+            "lines": [
+                {
+                    "speaker": "player_zombi",
+                    "line_id": "zombi_line_02",
+                    "dialogue_box_animation": "player_zombi_dialogue_icon.png",
+                    "text": "Grr theres bullets everywhere"
+                },
+                {
+                    "speaker": "captain_paprika",
+                    "line_id": "paprika_hint_02",
+                    "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
+                    "text": "You can evade the bullets by dashing [input hint icon], and if you dash into a bullet you will reflect it!"
+                },
+                {
+                    "speaker": "captain_paprika",
+                    "line_id": "paprika_hint_03",
+                    "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
+                    "text": "Try also using your special shrink ability [input hint icon]!"
+                   
+                }
+       
+            ],
+            "can_fast_forward": false,
+            "actions": [
+               {
+                    "line_id": "zombi_line_02",
+                    "input_hint": "gamepad_a/keeb_enter",
+                    "next": "paprika_hint_02"
+                },
+                {
+                    "line_id": "paprika_hint_02",
+                    "input_hint": "gamepad_a/keeb_enter",
+                    "next": "paprika_hint_03"
+                },
+                {
+                    "line_id":"paprika_hint_03",
+                    "input_hint":"gamepad_a/keeb_enter",
+                    "next":"end"
+                }
+ 
+            ]
+        }
+    ]
+}

@@ -22,7 +22,15 @@ Missile_Pool :: struct {
 	missiles: [MAX_MISSILES]Missile,
 }
 
-launch_dash_missiles :: proc(pool: ^Missile_Pool, origin: rl.Vector2, dash_dir: rl.Vector2) {
+launch_dash_missiles :: proc(
+	pool: ^Missile_Pool,
+	origin: rl.Vector2,
+	dash_dir: rl.Vector2,
+	count: int,
+) {
+	if count <= 0 {
+		return
+	}
 	dir := dash_dir
 	if rl.Vector2Length(dir) < 0.001 {
 		dir = {0, -1}
@@ -33,10 +41,10 @@ launch_dash_missiles :: proc(pool: ^Missile_Pool, origin: rl.Vector2, dash_dir: 
 	fan_rad := f32(DASH_FRENZY_LAUNCH_FAN_DEG) * math.PI / 180.0
 	half_fan := fan_rad * 0.5
 
-	for i in 0 ..< DASH_FRENZY_MISSILES_PER_DASH {
+	for i in 0 ..< count {
 		t: f32 = 0
-		if DASH_FRENZY_MISSILES_PER_DASH > 1 {
-			t = f32(i) / f32(DASH_FRENZY_MISSILES_PER_DASH - 1)
+		if count > 1 {
+			t = f32(i) / f32(count - 1)
 		}
 		// Spread evenly across the fan, centered on the dash direction.
 		angle := base_angle - half_fan + t * fan_rad

@@ -5,11 +5,12 @@ import rl "vendor:raylib"
 Audio :: struct {
 	music_volume:             f32,
 	sfx_volume:               f32,
-	// theme1 plays once at startup, then theme2 takes over and loops. on_theme2
-	// flips after theme1 ends so update_audio knows which stream to advance.
+	// theme2 loops during gameplay; theme1 takes over while a victory screen is
+	// up and yields back to theme2 on advance_to_next_mission. on_victory tracks
+	// which stream update_audio should advance.
 	theme1:                   rl.Music,
 	theme2:                   rl.Music,
-	on_theme2:                bool,
+	on_victory:               bool,
 	sfx_charged_beam:         rl.Sound,
 	sfx_charging_beam:        rl.Sound,
 	sfx_dash:                 rl.Sound,
@@ -27,12 +28,12 @@ init_audio :: proc(a: ^Audio) {
 	a.sfx_volume = SFX_VOLUME
 
 	a.theme1 = rl.LoadMusicStream("assets/audio/soundtrack/themesong1.ogg")
-	a.theme1.looping = false
+	a.theme1.looping = true
 	a.theme2 = rl.LoadMusicStream("assets/audio/soundtrack/themesong2.ogg")
 	a.theme2.looping = true
 	rl.SetMusicVolume(a.theme1, a.music_volume)
 	rl.SetMusicVolume(a.theme2, a.music_volume)
-	rl.PlayMusicStream(a.theme1)
+	rl.PlayMusicStream(a.theme2)
 
 	a.sfx_charged_beam = rl.LoadSound("assets/audio/sfx/player_charged_beam.wav")
 	a.sfx_charging_beam = rl.LoadSound("assets/audio/sfx/player_charging_beam.wav")
@@ -48,18 +49,32 @@ init_audio :: proc(a: ^Audio) {
 }
 
 update_audio :: proc(a: ^Audio) {
-	if a.on_theme2 {
+	if a.on_victory {
+		rl.UpdateMusicStream(a.theme1)
+	} else {
 		rl.UpdateMusicStream(a.theme2)
+	}
+}
+
+// Swap to the victory loop. Idempotent: safe to call every frame the victory
+// screen is up.
+play_victory_music :: proc(a: ^Audio) {
+	if a.on_victory {
 		return
 	}
-	rl.UpdateMusicStream(a.theme1)
-	// theme1 is non-looping; once it stops playing it has finished. Hand off
-	// to theme2 (looping) so the soundtrack keeps going for the rest of the run.
-	if !rl.IsMusicStreamPlaying(a.theme1) {
-		rl.StopMusicStream(a.theme1)
-		rl.PlayMusicStream(a.theme2)
-		a.on_theme2 = true
+	rl.StopMusicStream(a.theme2)
+	rl.PlayMusicStream(a.theme1)
+	a.on_victory = true
+}
+
+// Swap back to the gameplay loop. Idempotent.
+play_gameplay_music :: proc(a: ^Audio) {
+	if !a.on_victory {
+		return
 	}
+	rl.StopMusicStream(a.theme1)
+	rl.PlayMusicStream(a.theme2)
+	a.on_victory = false
 }
 
 unload_audio :: proc(a: ^Audio) {

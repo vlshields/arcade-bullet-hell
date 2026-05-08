@@ -253,15 +253,15 @@ update_enemies :: proc(
 		}
 		switch e.kind {
 		case .Grunt:
-			update_grunt_one(e, pool.fire_interval, bullets, dt)
+			update_grunt_one(e, i, pool.fire_interval, bullets, dt)
 		case .WeirdGuy:
-			update_weirdguy_one(e, player_center, bullets, dt)
+			update_weirdguy_one(e, i, player_center, bullets, dt)
 		}
 	}
 }
 
 @(private = "file")
-update_grunt_one :: proc(e: ^Enemy, fire_interval: f32, bullets: ^Bullet_Pool, dt: f32) {
+update_grunt_one :: proc(e: ^Enemy, index: int, fire_interval: f32, bullets: ^Bullet_Pool, dt: f32) {
 	d := &e.data.(Grunt_Data)
 
 	d.angle += ENEMY_ORBIT_SPEED * dt
@@ -298,7 +298,7 @@ update_grunt_one :: proc(e: ^Enemy, fire_interval: f32, bullets: ^Bullet_Pool, d
 				math.cos(angle) * ENEMY_BULLET_SPEED,
 				math.sin(angle) * ENEMY_BULLET_SPEED,
 			}
-			spawn_bullet(bullets, e.pos, vel)
+			spawn_bullet(bullets, e.pos, vel, rl.RED, .Enemy, .Enemy, index)
 		}
 	}
 }
@@ -306,6 +306,7 @@ update_grunt_one :: proc(e: ^Enemy, fire_interval: f32, bullets: ^Bullet_Pool, d
 @(private = "file")
 update_weirdguy_one :: proc(
 	e: ^Enemy,
+	index: int,
 	player_center: rl.Vector2,
 	bullets: ^Bullet_Pool,
 	dt: f32,
@@ -334,7 +335,7 @@ update_weirdguy_one :: proc(
 			math.cos(angle) * WEIRDGUY_BULLET_SPEED,
 			math.sin(angle) * WEIRDGUY_BULLET_SPEED,
 		}
-		spawn_bullet(bullets, e.pos, vel, color)
+		spawn_bullet(bullets, e.pos, vel, color, .Enemy, .Enemy, index)
 	}
 }
 

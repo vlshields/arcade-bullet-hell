@@ -206,7 +206,7 @@ update_boss :: proc(pool: ^Boss_Pool, bullets: ^Bullet_Pool, sneaks: ^Sneak_Pool
 				math.cos(ang) * BOSS_BULLET_SPEED,
 				math.sin(ang) * BOSS_BULLET_SPEED,
 			}
-			spawn_bullet(bullets, b.pos, vel, color)
+			spawn_bullet(bullets, b.pos, vel, color, .Enemy, .Boss, 0)
 		}
 		b.base_angle += inc_rad
 		if b.base_angle >= math.TAU {
@@ -374,7 +374,7 @@ update_morgan :: proc(b: ^Boss, bullets: ^Bullet_Pool, sneaks: ^Sneak_Pool, dt: 
 		for r in 0 ..< rows {
 			ang := b.base_angle + f32(r) * row_step
 			vel := rl.Vector2{math.cos(ang) * bullet_speed, math.sin(ang) * bullet_speed}
-			spawn_bullet(bullets, b.pos, vel, color)
+			spawn_bullet(bullets, b.pos, vel, color, .Enemy, .Boss, 0)
 		}
 		b.base_angle += inc_rad
 		if b.base_angle >= math.TAU {

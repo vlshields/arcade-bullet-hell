@@ -294,6 +294,210 @@ input_menu_step_y :: proc() -> int {
 	return 0
 }
 
+// Semantic prompts the UI can ask to render an icon for. The mapping to a
+// concrete texture is split per device in draw_input_hint.
+Input_Hint :: enum {
+	Move,
+	Menu_Step_Horizontal,
+	Attack,
+	Dash,
+	Slow_Time,
+	Shrink_Bomb,
+	Pause,
+	Confirm,
+	Back,
+}
+
+// Source PNGs are 64x64; we downscale to HINT_ICON_SIZE on the 640x360 render
+// target. Bilinear filter keeps the icons readable at small sizes; the outer
+// render-target upscale to the window stays POINT so pixel art elsewhere is
+// unaffected.
+@(private = "file")
+hint_textures: struct {
+	// Keyboard / mouse
+	kb_arrows:        rl.Texture2D,
+	kb_arrows_horiz:  rl.Texture2D,
+	mouse_left:       rl.Texture2D,
+	kb_space:         rl.Texture2D,
+	kb_shift:         rl.Texture2D,
+	kb_f:             rl.Texture2D,
+	kb_escape:        rl.Texture2D,
+	kb_enter:         rl.Texture2D,
+	// Xbox-style gamepad
+	gp_stick_l:       rl.Texture2D,
+	gp_dpad:          rl.Texture2D,
+	gp_dpad_horiz:    rl.Texture2D,
+	gp_rt:            rl.Texture2D,
+	gp_lt:            rl.Texture2D,
+	gp_button_a:      rl.Texture2D,
+	gp_button_b:      rl.Texture2D,
+	gp_button_x:      rl.Texture2D,
+	gp_button_menu:   rl.Texture2D,
+}
+
+@(private = "file")
+load_hint_texture :: proc(path: cstring) -> rl.Texture2D {
+	tex := rl.LoadTexture(path)
+	rl.SetTextureFilter(tex, .BILINEAR)
+	return tex
+}
+
+init_input_hints :: proc() {
+	hint_textures.kb_arrows = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_arrows.png")
+	hint_textures.kb_arrows_horiz = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_arrows_horizontal.png")
+	hint_textures.mouse_left = load_hint_texture("assets/tiles/DefaultKeeb/mouse_left.png")
+	hint_textures.kb_space = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_space.png")
+	hint_textures.kb_shift = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_shift.png")
+	hint_textures.kb_f = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_f.png")
+	hint_textures.kb_escape = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_escape.png")
+	hint_textures.kb_enter = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_enter.png")
+
+	hint_textures.gp_stick_l = load_hint_texture("assets/tiles/Default/xbox_stick_l.png")
+	hint_textures.gp_dpad = load_hint_texture("assets/tiles/Default/xbox_dpad.png")
+	hint_textures.gp_dpad_horiz = load_hint_texture("assets/tiles/Default/xbox_dpad_horizontal.png")
+	hint_textures.gp_rt = load_hint_texture("assets/tiles/Default/xbox_rt.png")
+	hint_textures.gp_lt = load_hint_texture("assets/tiles/Default/xbox_lt.png")
+	hint_textures.gp_button_a = load_hint_texture("assets/tiles/Default/xbox_button_color_a.png")
+	hint_textures.gp_button_b = load_hint_texture("assets/tiles/Default/xbox_button_color_b.png")
+	hint_textures.gp_button_x = load_hint_texture("assets/tiles/Default/xbox_button_color_x.png")
+	hint_textures.gp_button_menu = load_hint_texture("assets/tiles/Default/xbox_button_menu.png")
+}
+
+unload_input_hints :: proc() {
+	rl.UnloadTexture(hint_textures.kb_arrows)
+	rl.UnloadTexture(hint_textures.kb_arrows_horiz)
+	rl.UnloadTexture(hint_textures.mouse_left)
+	rl.UnloadTexture(hint_textures.kb_space)
+	rl.UnloadTexture(hint_textures.kb_shift)
+	rl.UnloadTexture(hint_textures.kb_f)
+	rl.UnloadTexture(hint_textures.kb_escape)
+	rl.UnloadTexture(hint_textures.kb_enter)
+	rl.UnloadTexture(hint_textures.gp_stick_l)
+	rl.UnloadTexture(hint_textures.gp_dpad)
+	rl.UnloadTexture(hint_textures.gp_dpad_horiz)
+	rl.UnloadTexture(hint_textures.gp_rt)
+	rl.UnloadTexture(hint_textures.gp_lt)
+	rl.UnloadTexture(hint_textures.gp_button_a)
+	rl.UnloadTexture(hint_textures.gp_button_b)
+	rl.UnloadTexture(hint_textures.gp_button_x)
+	rl.UnloadTexture(hint_textures.gp_button_menu)
+}
+
+// Fills `out` with the textures to draw left-to-right for `kind` on the active
+// device and returns how many slots were used. Most hints are a single icon;
+// Move on gamepad is the only two-icon case (left stick + dpad).
+@(private = "file")
+hint_icons :: proc(kind: Input_Hint, out: ^[2]rl.Texture2D) -> int {
+	on_gamepad := last_device == .Gamepad
+	switch kind {
+	case .Move:
+		if on_gamepad {
+			out[0] = hint_textures.gp_stick_l
+			out[1] = hint_textures.gp_dpad
+			return 2
+		}
+		out[0] = hint_textures.kb_arrows
+		return 1
+	case .Menu_Step_Horizontal:
+		out[0] = on_gamepad ? hint_textures.gp_dpad_horiz : hint_textures.kb_arrows_horiz
+		return 1
+	case .Attack:
+		out[0] = on_gamepad ? hint_textures.gp_rt : hint_textures.mouse_left
+		return 1
+	case .Dash:
+		out[0] = on_gamepad ? hint_textures.gp_button_b : hint_textures.kb_space
+		return 1
+	case .Slow_Time:
+		out[0] = on_gamepad ? hint_textures.gp_lt : hint_textures.kb_shift
+		return 1
+	case .Shrink_Bomb:
+		out[0] = on_gamepad ? hint_textures.gp_button_x : hint_textures.kb_f
+		return 1
+	case .Pause:
+		out[0] = on_gamepad ? hint_textures.gp_button_menu : hint_textures.kb_escape
+		return 1
+	case .Confirm:
+		out[0] = on_gamepad ? hint_textures.gp_button_a : hint_textures.kb_enter
+		return 1
+	case .Back:
+		out[0] = on_gamepad ? hint_textures.gp_button_b : hint_textures.kb_escape
+		return 1
+	}
+	return 0
+}
+
+// Total width an `kind` hint will occupy when drawn at icon `size`. Caller
+// uses this to lay out hint+text rows or center them on screen.
+input_hint_width :: proc(kind: Input_Hint, size: i32) -> i32 {
+	icons: [2]rl.Texture2D
+	n := i32(hint_icons(kind, &icons))
+	if n <= 0 {
+		return 0
+	}
+	return n * size + (n - 1) * HINT_ICON_GAP
+}
+
+// Pending hint to be flushed at window resolution after the render-target
+// upscale. Going through the render target's POINT filter mushes the
+// downscaled icon detail; drawing post-upscale at native window resolution
+// keeps them sharp while the game art stays chunky pixel-art.
+@(private = "file")
+Hint_Draw :: struct {
+	kind:    Input_Hint,
+	rt_x:    i32,
+	rt_y:    i32,
+	rt_size: i32,
+}
+
+@(private = "file")
+hint_draw_queue: [32]Hint_Draw
+
+@(private = "file")
+hint_draw_count: int
+
+// Records a hint at render-target coords (x, y) so flush_input_hints can later
+// blit it at the matching window position. Returns the render-target width the
+// icon will occupy so the caller can lay out adjacent text against it.
+draw_input_hint :: proc(kind: Input_Hint, x, y: i32, size: i32) -> i32 {
+	if hint_draw_count < len(hint_draw_queue) {
+		hint_draw_queue[hint_draw_count] = Hint_Draw {
+			kind    = kind,
+			rt_x    = x,
+			rt_y    = y,
+			rt_size = size,
+		}
+		hint_draw_count += 1
+	}
+	return input_hint_width(kind, size)
+}
+
+// Blits queued hints onto the window using the same scale/offset as the
+// render-target upscale. Call once per frame, after rl.DrawTexturePro and
+// before rl.EndDrawing. Clears the queue on flush.
+flush_input_hints :: proc(scale, offset_x, offset_y: f32) {
+	src := rl.Rectangle{0, 0, 64, 64}
+	icons: [2]rl.Texture2D
+	for i in 0 ..< hint_draw_count {
+		h := hint_draw_queue[i]
+		n := hint_icons(h.kind, &icons)
+		cursor_x := f32(h.rt_x)
+		for j in 0 ..< n {
+			dst := rl.Rectangle {
+				offset_x + cursor_x * scale,
+				offset_y + f32(h.rt_y) * scale,
+				f32(h.rt_size) * scale,
+				f32(h.rt_size) * scale,
+			}
+			rl.DrawTexturePro(icons[j], src, dst, {0, 0}, 0, rl.WHITE)
+			cursor_x += f32(h.rt_size)
+			if j < n - 1 {
+				cursor_x += HINT_ICON_GAP
+			}
+		}
+	}
+	hint_draw_count = 0
+}
+
 // Returns whether dash was triggered this frame and the normalized direction.
 // Keyboard (SPACE): direction is from player toward mouse cursor.
 // Gamepad (B / RIGHT_FACE_RIGHT): direction is the left stick axis (dpad as fallback).

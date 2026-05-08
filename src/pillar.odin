@@ -223,7 +223,7 @@ update_pillar_combat :: proc(wave: ^Pillar_Wave, bullets: ^Bullet_Pool, dt: f32)
 					math.cos(ang) * PILLAR_BULLET_SPEED,
 					math.sin(ang) * PILLAR_BULLET_SPEED,
 				}
-				spawn_bullet(bullets, p.pos, vel, color)
+				spawn_bullet(bullets, p.pos, vel, color, .Enemy, .Pillar, i)
 			}
 			p.base_angle += inc_rad * p.spin_dir
 			if p.base_angle >= math.TAU {

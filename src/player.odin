@@ -19,6 +19,8 @@ Player_Upgrade :: enum {
 	Dash_Frenzy,
 	Rapid_Fire,
 	Beam_Blast,
+	Riposte,
+	Lucky_Shot,
 }
 
 Player_Upgrade_Set :: bit_set[Player_Upgrade]
@@ -69,6 +71,12 @@ init_player :: proc(p: ^Player) {
 
 	p.flash_shader = load_flash_shader()
 
+	reset_player_for_new_game(p)
+}
+
+// Resets transient/gameplay fields without touching textures or shaders, so the
+// main menu can hand the same Player back into a fresh run.
+reset_player_for_new_game :: proc(p: ^Player) {
 	p.pos = {SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2}
 	p.anim = .Idle
 	p.facing_left = false
@@ -216,7 +224,11 @@ update_player :: proc(p: ^Player, missiles: ^Missile_Pool, audio: ^Audio, dt: f3
 			p.dash_trail_fade = PLAYER_DASH_TRAIL_FADE_TIME
 			p.stamina -= dash_cost
 			if .Dash_Frenzy in p.upgrades {
-				launch_dash_missiles(missiles, {pcx, pcy}, dir)
+				count := DASH_FRENZY_MISSILES_PER_DASH
+				if .Lucky_Shot in p.upgrades {
+					count += 1
+				}
+				launch_dash_missiles(missiles, {pcx, pcy}, dir, count)
 			}
 			play_dash_sfx(audio)
 		}

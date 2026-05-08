@@ -5,11 +5,11 @@ SCREEN_HEIGHT :: 360 // px
 
 BG_LAYERS :: 3 // count
 
-MUSIC_VOLUME :: 0.2 // multiplier [0..1] (default volume for the looping theme song)
-SFX_VOLUME :: 0.6 // multiplier [0..1] (default volume applied to every loaded sfx clip)
+MUSIC_VOLUME :: 0.2 // multiplier [0..1]
+SFX_VOLUME :: 0.6 // multiplier [0..1]
 
 GAMEPAD_ID :: 0 // index
-STICK_DEADZONE :: 0.2 // normalized axis magnitude [0..1]
+STICK_DEADZONE :: 0.2 // [0..1]
 
 PLAYER_SPEED :: 95.0 // px/s
 PLAYER_MAX_HP :: 90 // hp
@@ -18,151 +18,151 @@ PLAYER_HIT_RADIUS :: 4.0 // px
 PLAYER_INVULN_TIME :: 0.6 // s
 PLAYER_FLASH_HZ :: 10.0 // toggles/s
 PLAYER_ANIM_FPS :: 8.0 // frames/s
-PLAYER_FRAME_W :: 8 // px (sprite source)
-PLAYER_FRAME_H :: 8 // px (sprite source)
+PLAYER_FRAME_W :: 8 // px
+PLAYER_FRAME_H :: 8 // px
 PLAYER_IDLE_FRAMES :: 7 // count
 PLAYER_MOVE_FRAMES :: 3 // count
-PLAYER_DRAW_SCALE :: 2 // multiplier (unitless)
-RETICLE_FRAME_W :: 8 // px (sprite source)
-RETICLE_FRAME_H :: 8 // px (sprite source)
-RETICLE_DISTANCE :: 90.0 // px (from player center)
+PLAYER_DRAW_SCALE :: 2 // multiplier
+RETICLE_FRAME_W :: 8 // px
+RETICLE_FRAME_H :: 8 // px
+RETICLE_DISTANCE :: 90.0 // px
 
-PLAYER_PROJECTILE_ORIGIN_Y_OFFSET :: -3.0 // px (vertical offset from player center where projectiles emit; negative = above center, lines up with the gun barrel)
+PLAYER_PROJECTILE_ORIGIN_Y_OFFSET :: -3.0 // px
 
 PLAYER_DASH_SPEED :: 480.0 // px/s
 PLAYER_DASH_DURATION :: 0.18 // s
-PLAYER_DASH_COOLDOWN :: 0.45 // s (from dash start; must exceed DASH_DURATION)
-PLAYER_DASH_TRAIL_LEN :: 12 // count (afterimage snapshots; one per frame during dash)
-PLAYER_DASH_TRAIL_FADE_TIME :: 0.35 // s (afterimage visibility after dash starts)
-PLAYER_DASH_TRAIL_MAX_ALPHA :: 0.65 // multiplier (cap on newest afterimage alpha)
+PLAYER_DASH_COOLDOWN :: 0.45 // s
+PLAYER_DASH_TRAIL_LEN :: 12 // count
+PLAYER_DASH_TRAIL_FADE_TIME :: 0.35 // s
+PLAYER_DASH_TRAIL_MAX_ALPHA :: 0.65 // multiplier
 
 PLAYER_MAX_STAMINA :: 50.0 // stamina
 PLAYER_DASH_STAMINA_COST :: 5.0 // stamina/dash
-PLAYER_STAMINA_RECOVER_RATE :: 2.0 // stamina/s (1 per 0.5s)
-DASH_FRENZY_EXTRA_STAMINA_COST :: 2.0 // stamina/dash (added on top of base when Dash Frenzy upgrade is active)
+PLAYER_STAMINA_RECOVER_RATE :: 2.0 // stamina/s
+DASH_FRENZY_EXTRA_STAMINA_COST :: 2.0 // stamina/dash
 
-SLOW_TIME_FACTOR :: 0.5 // multiplier (unitless) on world dt while slow-time is held
-SLOW_TIME_STAMINA_PER_SEC :: 10.0 // stamina/s drained while slow-time is held; ends when stamina hits 0
-SLOW_TIME_TINT_R :: 80 // [0..255] (cyan-blue cool wash over the world while slow-time is active)
+SLOW_TIME_FACTOR :: 0.5 // multiplier
+SLOW_TIME_STAMINA_PER_SEC :: 10.0 // stamina/s
+SLOW_TIME_TINT_R :: 80 // [0..255]
 SLOW_TIME_TINT_G :: 180 // [0..255]
 SLOW_TIME_TINT_B :: 255 // [0..255]
-SLOW_TIME_TINT_ALPHA_BASE :: 55 // alpha [0..255] (midpoint of the breathing pulse)
-SLOW_TIME_TINT_ALPHA_PULSE :: 20 // alpha [0..255] (amplitude of the breathing pulse around the base)
-SLOW_TIME_PULSE_HZ :: 1.6 // Hz (breathing cadence for the tint pulse)
+SLOW_TIME_TINT_ALPHA_BASE :: 55 // alpha [0..255]
+SLOW_TIME_TINT_ALPHA_PULSE :: 20 // alpha [0..255]
+SLOW_TIME_PULSE_HZ :: 1.6 // Hz
 
-ENEMY_COUNT :: 6 // count (shared pool capacity for the per-level main enemy — sized to the largest wave)
-GRUNT_WAVE_COUNT :: 3 // count (grunts per level-1 wave; orbit is evenly divided across this count)
-ENEMY_FRAME_W :: 16 // px (sprite source)
-ENEMY_FRAME_H :: 16 // px (sprite source)
+ENEMY_COUNT :: 6 // count
+GRUNT_WAVE_COUNT :: 3 // count
+ENEMY_FRAME_W :: 16 // px
+ENEMY_FRAME_H :: 16 // px
 ENEMY_FRAMES :: 2 // count
 ENEMY_ANIM_FPS :: 8.0 // frames/s
-ENEMY_DRAW_SCALE :: 2 // multiplier (unitless)
-ENEMY_ORBIT_RADIUS :: 120.0 // px (from player center)
-ENEMY_SPAWN_RADIUS :: 500.0 // px (from player center)
+ENEMY_DRAW_SCALE :: 2 // multiplier
+ENEMY_ORBIT_RADIUS :: 120.0 // px
+ENEMY_SPAWN_RADIUS :: 500.0 // px
 ENEMY_APPROACH_SPEED :: 200.0 // px/s
 ENEMY_ORBIT_SPEED :: 0.6 // rad/s
-ENEMY_FIRE_INTERVAL :: 3.0 // s (initial; shrinks once after the threshold below)
-ENEMY_WAVE_BOOST_THRESHOLD :: 3 // count (waves cleared before fire-frequency boost applies)
-ENEMY_FIRE_FREQ_BOOST :: 0.5 // fraction (added to fire frequency at threshold; interval becomes interval / (1 + this))
+ENEMY_FIRE_INTERVAL :: 3.0 // s
+ENEMY_WAVE_BOOST_THRESHOLD :: 3 // count
+ENEMY_FIRE_FREQ_BOOST :: 0.5 // fraction
 ENEMY_BULLETS_PER_BURST :: 12 // count
 ENEMY_BULLET_SPEED :: 70.0 // px/s
 ENEMY_MAX_HP :: 21 // hp
 ENEMY_HIT_RADIUS :: 10.0 // px
 ENEMY_HIT_FLASH_TIME :: 0.08 // s
 
-WEIRDGUY_WAVE_COUNT :: 6 // count (weird guys per level-2 wave; respawn as a fresh wave when all are dead)
+WEIRDGUY_WAVE_COUNT :: 6 // count
 WEIRDGUY_MAX_HP :: 4 // hp
-WEIRDGUY_FRAME_W :: 16 // px (sprite source)
-WEIRDGUY_FRAME_H :: 16 // px (sprite source)
+WEIRDGUY_FRAME_W :: 16 // px
+WEIRDGUY_FRAME_H :: 16 // px
 WEIRDGUY_FRAMES :: 1 // count
-WEIRDGUY_DRAW_SCALE :: 2 // multiplier (unitless)
+WEIRDGUY_DRAW_SCALE :: 2 // multiplier
 WEIRDGUY_HIT_RADIUS :: 10.0 // px
-WEIRDGUY_PATROL_RANGE :: 220.0 // px (lateral viewport distance covered between turns)
-WEIRDGUY_SPEED :: 280.0 // px/s (lateral patrol speed; "rapidly across the viewport")
-WEIRDGUY_Y_MIN :: 30.0 // px (random spawn altitude lower bound)
-WEIRDGUY_Y_MAX :: 200.0 // px (random spawn altitude upper bound; keeps weird guys above typical player y)
-WEIRDGUY_FIRE_INTERVAL :: 0.08 // s (between single-bullet shots; "extremely rapid")
+WEIRDGUY_PATROL_RANGE :: 220.0 // px
+WEIRDGUY_SPEED :: 280.0 // px/s
+WEIRDGUY_Y_MIN :: 30.0 // px
+WEIRDGUY_Y_MAX :: 200.0 // px
+WEIRDGUY_FIRE_INTERVAL :: 0.08 // s
 WEIRDGUY_BULLET_SPEED :: 100.0 // px/s
 
-BOSS_TRIGGER_WAVE :: 4 // count (grunt waves cleared before Golgatha spawns)
+BOSS_TRIGGER_WAVE :: 4 // count
 BOSS_MAX_HP :: 110 // hp
-BOSS_FRAME_W :: 32 // px (sprite source)
-BOSS_FRAME_H :: 32 // px (sprite source)
+BOSS_FRAME_W :: 32 // px
+BOSS_FRAME_H :: 32 // px
 BOSS_FRAMES :: 5 // count
-BOSS_DRAW_SCALE :: 2 // multiplier (unitless)
+BOSS_DRAW_SCALE :: 2 // multiplier
 BOSS_ANIM_FPS :: 6.0 // frames/s
 BOSS_HIT_RADIUS :: 16.0 // px
 BOSS_HIT_FLASH_TIME :: 0.08 // s
-BOSS_SPAWN_X :: 320.0 // px (anchor x; SCREEN_WIDTH / 2)
-BOSS_SPAWN_Y :: 60.0 // px (anchor y, fixed; sway only on x)
+BOSS_SPAWN_X :: 320.0 // px
+BOSS_SPAWN_Y :: 60.0 // px
 BOSS_SWAY_AMPLITUDE :: 38.0 // px
-BOSS_SWAY_FREQ :: 0.8 // Hz (brisk side-to-side cadence)
-BOSS_FIGURE8_Y_RATIO :: 0.5 // multiplier (unitless; peak vertical drift = sway_amp * 0.5 * this; shared by both bosses)
-BOSS_FIRE_INTERVAL :: 0.033 // s (matches bhport reference: 2 frames @ 60fps)
-BOSS_BULLET_ROWS :: 6 // count (matches bhport reference default)
-BOSS_ANGLE_INCREMENT_DEG :: 5.0 // deg/burst (rotation of base direction; matches bhport reference)
-BOSS_BULLET_SPEED :: 130.0 // px/s (bhport reference scaled to 640x360)
-BOSS_SNEAK_SPAWN_INTERVAL :: 4.0 // s (cadence of try_spawn_sneak attempts during boss fight)
+BOSS_SWAY_FREQ :: 0.8 // Hz
+BOSS_FIGURE8_Y_RATIO :: 0.5 // multiplier
+BOSS_FIRE_INTERVAL :: 0.033 // s
+BOSS_BULLET_ROWS :: 6 // count
+BOSS_ANGLE_INCREMENT_DEG :: 5.0 // deg/burst
+BOSS_BULLET_SPEED :: 130.0 // px/s
+BOSS_SNEAK_SPAWN_INTERVAL :: 4.0 // s
 BOSS_NAME :: "GOLGATHA" // string
 BOSS_NAME_FONT_SIZE :: 12 // px
-BOSS_HUD_BAR_W :: 360 // px (centered at top of screen)
+BOSS_HUD_BAR_W :: 360 // px
 BOSS_HUD_BAR_H :: 8 // px
-BOSS_HUD_NAME_Y :: 6 // px (name top edge from screen top)
-BOSS_HUD_BAR_Y :: 22 // px (bar top edge from screen top)
+BOSS_HUD_NAME_Y :: 6 // px
+BOSS_HUD_BAR_Y :: 22 // px
 
 MORGAN_NAME :: "MORGAN" // string
-MORGAN_FRAME_W :: 32 // px (sprite source)
-MORGAN_FRAME_H :: 32 // px (sprite source)
+MORGAN_FRAME_W :: 32 // px
+MORGAN_FRAME_H :: 32 // px
 MORGAN_IDLE_FRAMES :: 9 // count
-MORGAN_DRAW_SCALE :: 2 // multiplier (unitless)
+MORGAN_DRAW_SCALE :: 2 // multiplier
 MORGAN_ANIM_FPS :: 8.0 // frames/s
-MORGAN_HIT_RADIUS :: 32.0 // px (matches the visible 64x64 sprite — hits anywhere on the body register)
-MORGAN_PHASE_HP :: 300 // hp (per phase; defeated after 3 phases)
-MORGAN_PHASE_TRANSITION_DUR :: 1.5 // s (between-phase pause: world freezes and HP bar refills from 0 to MORGAN_PHASE_HP)
-MORGAN_SHIELD_HP :: 50 // hp (phase-3 energy shield; absorbs damage until broken)
-MORGAN_SHIELD_RECOVER_TIME :: 5.0 // s (delay before a broken shield comes back at full)
-MORGAN_SPAWN_X :: 320.0 // px (anchor x; SCREEN_WIDTH / 2)
-MORGAN_SPAWN_Y :: 70.0 // px (anchor y)
+MORGAN_HIT_RADIUS :: 34.0 // px
+MORGAN_PHASE_HP :: 300 // hp
+MORGAN_PHASE_TRANSITION_DUR :: 1.5 // s
+MORGAN_SHIELD_HP :: 50 // hp
+MORGAN_SHIELD_RECOVER_TIME :: 5.0 // s
+MORGAN_SPAWN_X :: 320.0 // px
+MORGAN_SPAWN_Y :: 70.0 // px
 MORGAN_P1_SWAY_AMP :: 100.0 // px
 MORGAN_P1_SWAY_FREQ :: 0.4 // Hz
 MORGAN_P2_SWAY_AMP :: 110.0 // px
-MORGAN_P2_SWAY_FREQ :: 0.6 // Hz
-MORGAN_P3_SWAY_AMP :: 140.0 // px (faster, wider in the final phase)
-MORGAN_P3_SWAY_FREQ :: 1.0 // Hz
-MORGAN_P1_FIRE_INTERVAL :: 0.18 // s (sparse spiral)
+MORGAN_P2_SWAY_FREQ :: 0.48 // Hz
+MORGAN_P3_SWAY_AMP :: 140.0 // px
+MORGAN_P3_SWAY_FREQ :: 0.7 // Hz
+MORGAN_P1_FIRE_INTERVAL :: 0.18 // s
 MORGAN_P1_ROWS :: 3 // count
 MORGAN_P1_ANGLE_INC_DEG :: 11.0 // deg/burst
 MORGAN_P1_BULLET_SPEED :: 75.0 // px/s
-MORGAN_P2_FIRE_INTERVAL :: 0.1 // s (denser, faster)
+MORGAN_P2_FIRE_INTERVAL :: 0.1 // s
 MORGAN_P2_ROWS :: 5 // count
 MORGAN_P2_ANGLE_INC_DEG :: 7.0 // deg/burst
 MORGAN_P2_BULLET_SPEED :: 95.0 // px/s
-MORGAN_P3_FIRE_INTERVAL :: 0.06 // s (most punishing spiral)
+MORGAN_P3_FIRE_INTERVAL :: 0.08 // s
 MORGAN_P3_ROWS :: 7 // count
 MORGAN_P3_ANGLE_INC_DEG :: 5.0 // deg/burst
 MORGAN_P3_BULLET_SPEED :: 120.0 // px/s
-MORGAN_ORB_INTERVAL :: 3.5 // s (cadence of the slow energy projectile that bursts on EOL)
-MORGAN_ORB_SPEED :: 38.0 // px/s (slow — easy to dodge directly)
-MORGAN_ORB_LIFE :: 4.5 // s (travels ~170px, then bursts)
-MORGAN_ORB_HIT_RADIUS :: 8.0 // px (collision radius for the orb itself)
-MORGAN_ORB_DRAW_RADIUS :: 11.0 // px (visual core radius)
-MORGAN_ORB_BURST_COUNT :: 18 // count (bullets in the omnidirectional ring spawned on EOL)
-MORGAN_ORB_BURST_SPEED :: 80.0 // px/s (ring bullets)
-MORGAN_P2_SNEAK_INTERVAL :: 3.5 // s (cadence of phase-2 sneak summons)
+MORGAN_ORB_INTERVAL :: 3.5 // s
+MORGAN_ORB_SPEED :: 38.0 // px/s
+MORGAN_ORB_LIFE :: 4.5 // s
+MORGAN_ORB_HIT_RADIUS :: 8.0 // px
+MORGAN_ORB_DRAW_RADIUS :: 11.0 // px
+MORGAN_ORB_BURST_COUNT :: 18 // count
+MORGAN_ORB_BURST_SPEED :: 80.0 // px/s
+MORGAN_P2_SNEAK_INTERVAL :: 3.5 // s
 
-SNEAK_MAX :: 6 // count (hard cap on simultaneously active minor enemies — sneaks + cyclops share slots; sized for the level-2 "between" phases where 4 sneaks or 1 cyclops + sneaks are scripted at once)
-LEVEL1_SNEAK_CAP :: 2 // count (effective level-1 cap; preserves prior level-1 difficulty since the pool was historically size 2)
-SNEAK_SPAWN_CHANCE :: 0.5 // probability [0..1] (heads = sneak, tails = cyclops on level >= 2; rolled on any enemy death)
-SNEAK_FRAME_W :: 16 // px (sprite source)
-SNEAK_FRAME_H :: 16 // px (sprite source)
+SNEAK_MAX :: 6 // count
+LEVEL1_SNEAK_CAP :: 2 // count
+SNEAK_SPAWN_CHANCE :: 0.5 // probability [0..1]
+SNEAK_FRAME_W :: 16 // px
+SNEAK_FRAME_H :: 16 // px
 SNEAK_FRAMES :: 1 // count
-SNEAK_DRAW_SCALE :: 2 // multiplier (unitless)
-SNEAK_SPAWN_MARGIN :: 24.0 // px (from viewport edges when picking spawn / teleport point)
-SNEAK_SWAY_AMPLITUDE :: 14.0 // px (lateral offset from spawn anchor)
+SNEAK_DRAW_SCALE :: 2 // multiplier
+SNEAK_SPAWN_MARGIN :: 24.0 // px
+SNEAK_SWAY_AMPLITUDE :: 14.0 // px
 SNEAK_SWAY_FREQ :: 1.4 // Hz
-SNEAK_BURST_INTERVAL :: 0.3333 // s (3 bursts per second)
+SNEAK_BURST_INTERVAL :: 0.3333 // s
 SNEAK_BULLETS_PER_BURST :: 4 // count
-SNEAK_BURST_FAN_DEG :: 24.0 // deg (total fan width across the 4 bullets, aimed at player)
+SNEAK_BURST_FAN_DEG :: 24.0 // deg
 SNEAK_BULLET_SPEED :: 90.0 // px/s
 SNEAK_TELEPORT_INTERVAL :: 10.0 // s
 SNEAK_MAX_HP :: 6 // hp
@@ -170,104 +170,104 @@ SNEAK_HIT_RADIUS :: 7.0 // px
 SNEAK_HIT_FLASH_TIME :: 0.08 // s
 
 CYCLOPS_MAX_HP :: 50 // hp
-CYCLOPS_FRAME_W :: 16 // px (sprite source)
-CYCLOPS_FRAME_H :: 16 // px (sprite source)
+CYCLOPS_FRAME_W :: 16 // px
+CYCLOPS_FRAME_H :: 16 // px
 CYCLOPS_FRAMES :: 9 // count
 CYCLOPS_ANIM_FPS :: 8.0 // frames/s
-CYCLOPS_DRAW_SCALE :: 2 // multiplier (unitless)
-CYCLOPS_HIT_RADIUS :: 10.0 // px (matches grunt)
-CYCLOPS_BULLET_SPEED :: 90.0 // px/s (matches sneak)
-CYCLOPS_CROSS_DURATION :: 5.5 // s (one full side-to-side pass)
-CYCLOPS_OFFSCREEN_MARGIN :: 24.0 // px (start/end x sit this far past the screen edge)
-CYCLOPS_Y_MIN :: 30.0 // px (random pass altitude lower bound)
-CYCLOPS_Y_MAX :: 220.0 // px (random pass altitude upper bound; keeps cyclops above typical player y)
-CYCLOPS_PATTERN_COUNT :: 3 // count (size of the bullet-pattern bag; rerolled each pass)
-CYCLOPS_AIMED_INTERVAL :: 0.7 // s (cadence of pattern 0: aimed fan)
+CYCLOPS_DRAW_SCALE :: 2 // multiplier
+CYCLOPS_HIT_RADIUS :: 10.0 // px
+CYCLOPS_BULLET_SPEED :: 90.0 // px/s
+CYCLOPS_CROSS_DURATION :: 5.5 // s
+CYCLOPS_OFFSCREEN_MARGIN :: 24.0 // px
+CYCLOPS_Y_MIN :: 30.0 // px
+CYCLOPS_Y_MAX :: 220.0 // px
+CYCLOPS_PATTERN_COUNT :: 3 // count
+CYCLOPS_AIMED_INTERVAL :: 0.7 // s
 CYCLOPS_AIMED_BULLETS :: 5 // count
-CYCLOPS_AIMED_FAN_DEG :: 30.0 // deg (total fan width across the aimed burst)
-CYCLOPS_RING_INTERVAL :: 1.3 // s (cadence of pattern 1: full ring)
-CYCLOPS_RING_BULLETS :: 10 // count (evenly spaced around the cyclops)
-CYCLOPS_SPIRAL_INTERVAL :: 0.15 // s (cadence of pattern 2: rotating spiral arms)
-CYCLOPS_SPIRAL_ARMS :: 2 // count (opposing arms; mini-Golgatha feel)
-CYCLOPS_SPIRAL_INC_DEG :: 14.0 // deg/burst (rotation of spiral base angle)
+CYCLOPS_AIMED_FAN_DEG :: 30.0 // deg
+CYCLOPS_RING_INTERVAL :: 1.3 // s
+CYCLOPS_RING_BULLETS :: 10 // count
+CYCLOPS_SPIRAL_INTERVAL :: 0.15 // s
+CYCLOPS_SPIRAL_ARMS :: 2 // count
+CYCLOPS_SPIRAL_INC_DEG :: 14.0 // deg/burst
 
 BULLET_LIFE :: 4.0 // s
 BULLET_RADIUS :: 3.0 // px
-MAX_BULLETS :: 512 // count (pool capacity; sized to absorb sustained Rapid_Fire bursts (~120 in flight) on top of enemy patterns)
+MAX_BULLETS :: 512 // count
 
-SHRINK_BOMBS_PER_LEVEL :: 3 // count (player's shrink-bomb stock; reset at the start of every level)
-SHRINK_BOMB_DURATION :: 0.4 // s (time for an enemy bullet caught in the bomb to shrink to nothing)
-SHRINK_BOMB_BURST_PARTICLES :: 24 // count (player-centered particle burst when a bomb deploys)
-SHRINK_BOMB_HUD_DOT_R :: 3.0 // px (radius of each remaining-bomb pip drawn on the HUD)
-SHRINK_BOMB_HUD_DOT_GAP :: 4 // px (horizontal gap between HUD pips)
+SHRINK_BOMBS_PER_LEVEL :: 3 // count
+SHRINK_BOMB_DURATION :: 0.6 // s
+SHRINK_BOMB_BURST_PARTICLES :: 24 // count
+SHRINK_BOMB_HUD_DOT_R :: 3.0 // px
+SHRINK_BOMB_HUD_DOT_GAP :: 4 // px
 
-REFLECT_HOMING_RATE :: 1.1 // 1/s (exponential lerp rate of reflected bullet velocity toward nearest enemy)
+REFLECT_HOMING_RATE :: 1.1 // 1/s
 REFLECT_DAMAGE :: 8 // hp/hit
-REFLECT_IMPACT_PARTICLES :: 5 // count (per enemy hit by reflected bullet)
+REFLECT_IMPACT_PARTICLES :: 5 // count
 
-LASER_FIRE_INTERVAL :: 0.19 // s (between shots while shoot button held)
+LASER_FIRE_INTERVAL :: 0.19 // s
 LASER_DAMAGE :: 6 // hp/hit
-LASER_LIFETIME :: 1.0 // s (max bolt lifetime safety despawn; usual exit is hit or off-screen)
-LASER_THICKNESS :: 1.0 // px (core line)
-LASER_GLOW_MULT :: 4.0 // multiplier (unitless, glow thickness vs core)
-LASER_IMPACT_PARTICLES :: 6 // count (per enemy hit by laser)
-LASER_BOLT_SPEED :: 900.0 // px/s (bolt travel speed; one SCREEN_HEIGHT covered in ~0.4s)
-LASER_BOLT_LENGTH :: 24.0 // px (visual + collision length of each bolt)
+LASER_LIFETIME :: 1.0 // s
+LASER_THICKNESS :: 1.0 // px
+LASER_GLOW_MULT :: 4.0 // multiplier
+LASER_IMPACT_PARTICLES :: 6 // count
+LASER_BOLT_SPEED :: 900.0 // px/s
+LASER_BOLT_LENGTH :: 24.0 // px
 
-CHARGE_BEAM_BASE_DAMAGE :: 6 // hp/hit (released at >= MIN_FIRE charge)
-CHARGE_BEAM_DAMAGE_BONUS :: 6 // hp/hit (added at full charge; total = 2 * base)
-CHARGE_BEAM_FULL_STAMINA_COST :: 15.0 // stamina (at full charge; scales linearly with charge on release)
-CHARGE_BEAM_HOLD_DELAY :: 1.0 // s (button must be held this long before charging begins)
-CHARGE_BEAM_RATE :: 2.0 // 1/s (charge fraction per second once charging starts; full in 0.5s after delay)
-CHARGE_BEAM_LIFETIME_BASE :: 0.3 // s (visible duration at zero charge)
-CHARGE_BEAM_LIFETIME_BONUS :: 0.3 // s (added at full charge)
-CHARGE_BEAM_THICKNESS_BASE :: 5.0 // px (released beam core width at zero charge)
-CHARGE_BEAM_THICKNESS_BONUS :: 25.0 // px (added at full charge)
-CHARGE_BEAM_HIT_PAD :: 4.0 // px (collision half-width pad beyond beam thickness)
-CHARGE_BEAM_IMPACT_PARTICLES :: 6 // count (per enemy hit by released beam)
-CHARGE_BEAM_RELEASE_BURST_BASE :: 10 // count (release-point particle burst at zero charge)
-CHARGE_BEAM_RELEASE_BURST_BONUS :: 30 // count (added at full charge)
-CHARGE_BEAM_FRINGE_COUNT :: 15 // count (electric fringe candidate positions per draw)
-CHARGE_BEAM_GATHER_DIST_MIN :: 30.0 // px (gather particle spawn distance from source)
-CHARGE_BEAM_GATHER_DIST_RANGE :: 20.0 // px (gather particle spawn distance random range)
-CHARGE_BEAM_GATHER_LIFE :: 0.2 // s (gather particle lifetime)
-MAX_BEAMS :: 16 // count (pool capacity)
+CHARGE_BEAM_BASE_DAMAGE :: 6 // hp/hit
+CHARGE_BEAM_DAMAGE_BONUS :: 6 // hp/hit
+CHARGE_BEAM_FULL_STAMINA_COST :: 15.0 // stamina
+CHARGE_BEAM_HOLD_DELAY :: 1.0 // s
+CHARGE_BEAM_RATE :: 2.0 // 1/s
+CHARGE_BEAM_LIFETIME_BASE :: 0.3 // s
+CHARGE_BEAM_LIFETIME_BONUS :: 0.3 // s
+CHARGE_BEAM_THICKNESS_BASE :: 5.0 // px
+CHARGE_BEAM_THICKNESS_BONUS :: 25.0 // px
+CHARGE_BEAM_HIT_PAD :: 4.0 // px
+CHARGE_BEAM_IMPACT_PARTICLES :: 6 // count
+CHARGE_BEAM_RELEASE_BURST_BASE :: 10 // count
+CHARGE_BEAM_RELEASE_BURST_BONUS :: 30 // count
+CHARGE_BEAM_FRINGE_COUNT :: 15 // count
+CHARGE_BEAM_GATHER_DIST_MIN :: 30.0 // px
+CHARGE_BEAM_GATHER_DIST_RANGE :: 20.0 // px
+CHARGE_BEAM_GATHER_LIFE :: 0.2 // s
+MAX_BEAMS :: 16 // count
 
-BEAM_BLAST_BEAM_COUNT :: 5 // count (laser bolts fired per Beam_Blast burst, fanned symmetrically around straight up)
-BEAM_BLAST_ANGLE_STEP_DEG :: 20.0 // deg (angle between adjacent bolts; outermost bolts sit at +/- 2 * step from up)
-BEAM_BLAST_DAMAGE_PER_BEAM :: 3 // hp/hit (per-bolt; volley damage caps at 15 when all 5 bolts converge on a single target)
+BEAM_BLAST_BEAM_COUNT :: 5 // count
+BEAM_BLAST_ANGLE_STEP_DEG :: 20.0 // deg
+BEAM_BLAST_DAMAGE_PER_BEAM :: 3 // hp/hit
 
-RAPID_FIRE_INTERVAL :: 0.05 // s (between rapid-fire shots while attack is held; 20 shots/s for bullet-hell density)
-RAPID_FIRE_DAMAGE :: 3 // hp/hit (per rapid-fire bullet on enemy)
+RAPID_FIRE_INTERVAL :: 0.05 // s
+RAPID_FIRE_DAMAGE :: 3 // hp/hit
 RAPID_FIRE_SPEED :: 234.0 // px/s
-RAPID_FIRE_LIFE :: 4.0 // s (per-projectile lifespan)
-RAPID_FIRE_RADIUS :: 1.0 // px (core circle)
-RAPID_FIRE_GLOW_MULT :: 3.5 // multiplier (glow circle radius vs core; matches LASER_GLOW_MULT family)
+RAPID_FIRE_LIFE :: 4.0 // s
+RAPID_FIRE_RADIUS :: 1.0 // px
+RAPID_FIRE_GLOW_MULT :: 3.5 // multiplier
 
-DASH_FRENZY_MISSILES_PER_DASH :: 2 // count (homing missiles launched on each dash while Dash Frenzy is active)
-DASH_FRENZY_LAUNCH_FAN_DEG :: 70.0 // deg (total spread between the two missiles, centered on the dash direction)
-MISSILE_DAMAGE :: 8 // hp/hit (per missile impact on enemy/sneak/boss)
-MISSILE_SPEED :: 220.0 // px/s (constant cruise speed; missiles always travel at this speed)
-MISSILE_LIFE :: 2.5 // s (auto-detonate after this if no target hit)
-MISSILE_HIT_RADIUS :: 4.0 // px (circle radius used for collision against enemies)
-MISSILE_TURN_RATE :: 6.0 // 1/s (exponential lerp rate of velocity toward the homing target)
-MISSILE_INITIAL_BLIND_TIME :: 0.05 // s (no homing during launch fan-out so the spread is visible)
-MISSILE_TRAIL_LEN :: 14 // count (past-position samples kept per missile for trail rendering)
-MISSILE_TRAIL_SAMPLE_INTERVAL :: 0.018 // s (gap between trail samples; smaller = denser trail)
-MISSILE_GLOW_LAYERS :: 4 // count (concentric glow circles drawn per missile body and trail node)
-MISSILE_BODY_RADIUS :: 2.5 // px (innermost bright core of the missile body)
-MISSILE_TRAIL_NODE_RADIUS :: 1.8 // px (innermost radius of trail node before glow scaling)
-MISSILE_IMPACT_PARTICLES :: 8 // count (per missile detonation; reuses spawn_impact_particles)
-MAX_MISSILES :: 24 // count (pool capacity; sized for back-to-back dashes)
+DASH_FRENZY_MISSILES_PER_DASH :: 2 // count
+DASH_FRENZY_LAUNCH_FAN_DEG :: 70.0 // deg
+MISSILE_DAMAGE :: 8 // hp/hit
+MISSILE_SPEED :: 220.0 // px/s
+MISSILE_LIFE :: 2.5 // s
+MISSILE_HIT_RADIUS :: 4.0 // px
+MISSILE_TURN_RATE :: 6.0 // 1/s
+MISSILE_INITIAL_BLIND_TIME :: 0.05 // s
+MISSILE_TRAIL_LEN :: 14 // count
+MISSILE_TRAIL_SAMPLE_INTERVAL :: 0.018 // s
+MISSILE_GLOW_LAYERS :: 4 // count
+MISSILE_BODY_RADIUS :: 2.5 // px
+MISSILE_TRAIL_NODE_RADIUS :: 1.8 // px
+MISSILE_IMPACT_PARTICLES :: 8 // count
+MAX_MISSILES :: 24 // count
 
-HEALTHPACK_MAX :: 8 // count (pool capacity)
-HEALTHPACK_DROP_CHANCE :: 0.15 // probability [0..1] (rolled per enemy/boss kill)
-HEALTHPACK_HEAL :: 10 // hp (per pickup; clamped to PLAYER_MAX_HP)
-HEALTHPACK_RADIUS :: 6.0 // px (collision; sums with PLAYER_HIT_RADIUS for pickup)
-HEALTHPACK_ARM :: 4.5 // px (cross arm half-length at pulse=1)
-HEALTHPACK_THICK :: 3.0 // px (cross bar thickness)
-HEALTHPACK_PULSE_HZ :: 1.5 // Hz (visibility pulse cadence)
-HEALTHPACK_DRIFT_SPEED :: 22.0 // px/s (downward drift; pack expires when it leaves the bottom of the screen — players lose their chance if they don't grab it in time)
+HEALTHPACK_MAX :: 8 // count
+HEALTHPACK_DROP_CHANCE :: 0.15 // probability [0..1]
+HEALTHPACK_HEAL :: 10 // hp
+HEALTHPACK_RADIUS :: 6.0 // px
+HEALTHPACK_ARM :: 4.5 // px
+HEALTHPACK_THICK :: 3.0 // px
+HEALTHPACK_PULSE_HZ :: 1.5 // Hz
+HEALTHPACK_DRIFT_SPEED :: 22.0 // px/s
 
 PARTICLE_GRAVITY :: 200.0 // px/s²
 PARTICLE_SPEED_MIN :: 50.0 // px/s
@@ -276,77 +276,109 @@ PARTICLE_LIFE_MIN :: 0.3 // s
 PARTICLE_LIFE_MAX :: 0.7 // s
 PARTICLE_SIZE_MIN :: 2.0 // px
 PARTICLE_SIZE_MAX :: 6.0 // px
-MAX_PARTICLES :: 256 // count (pool capacity)
+MAX_PARTICLES :: 256 // count
 
 HP_BAR_W :: 80 // px
 HP_BAR_H :: 6 // px
-HP_BAR_MARGIN :: 6 // px (from screen edge)
-STATUS_BAR_GAP :: 2 // px (vertical gap between stacked status bars)
+HP_BAR_MARGIN :: 6 // px
+STATUS_BAR_GAP :: 2 // px
 
-SCORE_KILL_LASER :: 10 // points (per enemy killed by the rapid laser)
-SCORE_KILL_CHARGE :: 15 // points (per enemy killed by the released charge beam)
-SCORE_KILL_REFLECT :: 25 // points (per enemy killed by a deflected bullet)
-SCORE_KILL_RAPID :: 10 // points (per enemy killed by a rapid-fire bullet)
-SCORE_KILL_BOSS :: 100 // points (per boss kill)
-SCORE_FONT_SIZE :: 16 // px (top-left score readout)
+SCORE_KILL_LASER :: 10 // points
+SCORE_KILL_CHARGE :: 15 // points
+SCORE_KILL_REFLECT :: 25 // points
+SCORE_KILL_RAPID :: 10 // points
+SCORE_KILL_BOSS :: 100 // points
+SCORE_FONT_SIZE :: 16 // px
 
 VICTORY_TITLE_FONT_SIZE :: 24 // px
 VICTORY_SCORE_FONT_SIZE :: 16 // px
-VICTORY_PROMPT_FONT_SIZE :: 10 // px (mission-advance prompt below score)
+VICTORY_PROMPT_FONT_SIZE :: 10 // px
 VICTORY_OVERLAY_ALPHA :: 180 // alpha [0..255]
 
-UPGRADE_TITLE_Y :: 30 // px (top y of MISSION COMPLETE title while choosing)
-UPGRADE_HEADER_Y :: 100 // px (top y of "CHOOSE YOUR UPGRADE" header)
+UPGRADE_TITLE_Y :: 30 // px
+UPGRADE_HEADER_Y :: 100 // px
 UPGRADE_HEADER_FONT_SIZE :: 14 // px
-UPGRADE_CARDS_Y :: 130 // px (top y of upgrade card row)
+UPGRADE_CARDS_Y :: 130 // px
 UPGRADE_CARD_W :: 180 // px
 UPGRADE_CARD_H :: 110 // px
-UPGRADE_CARD_GAP :: 24 // px (horizontal gap between cards)
+UPGRADE_CARD_GAP :: 24 // px
 UPGRADE_NAME_FONT_SIZE :: 14 // px
-UPGRADE_BODY_FONT_SIZE :: 8 // px (description lines inside cards)
+UPGRADE_BODY_FONT_SIZE :: 8 // px
 
-TRANSITION_HALF_DUR :: 0.6 // s (each half of mission transition: fade-out then fade-in, swap at midpoint)
+TRANSITION_HALF_DUR :: 0.6 // s
 
-LEVEL2_BETWEEN_1CYC2SN_SNEAK_COUNT :: 2 // count (sneaks spawned alongside the cyclops in the second between-beat)
-LEVEL2_BETWEEN_4SNEAKS_COUNT :: 4 // count (sneaks spawned at the start of the all-sneaks between-beat)
-LEVEL2_BETWEEN_3CYC_TARGET :: 3 // count (cyclops kills required to clear the 3-cyclops gauntlet)
-LEVEL2_BETWEEN_3CYC_SNEAK_INTERVAL :: 4.0 // s (cadence of streaming sneak spawns during the 3-cyclops gauntlet)
-LEVEL2_WAVES_TO_VICTORY :: 5 // count (level-2 phases the player must clear to trigger the victory screen; covers Wave1 → Between_1Cyc → Between_1Cyc_2Sneaks → Wave2 → Between_4Sneaks)
+DIALOGUE_BOX_W :: 520 // px
+DIALOGUE_BOX_H :: 72 // px
+DIALOGUE_BOX_BOTTOM_MARGIN :: 14 // px
+DIALOGUE_BOX_PAD :: 8 // px
+DIALOGUE_ICON_SRC_W :: 8 // px
+DIALOGUE_ICON_SRC_H :: 8 // px
+DIALOGUE_ICON_SRC_FRAMES :: 2 // count
+DIALOGUE_ICON_DRAW_SIZE :: 40 // px
+DIALOGUE_ICON_FRAME_DUR :: 0.22 // s
+DIALOGUE_NAME_FONT_SIZE :: 12 // px
+DIALOGUE_TEXT_FONT_SIZE :: 12 // px
+DIALOGUE_TEXT_LINE_GAP :: 3 // px
+DIALOGUE_INLINE_HINT_SIZE :: 14 // px
+DIALOGUE_CHAR_INTERVAL :: 0.028 // s
 
-LEVEL4_GRUNT_FIRE_INTERVAL :: 1.5 // s (level-4 grunt fire cadence — "faster variation" of the level-1 grunt rule, applied from the first wave)
-LEVEL4_WAVES_TO_VICTORY :: 4 // count (level-4 phases the player must clear: grunt → weirdguy → grunt → pillars)
+LEVEL2_BETWEEN_1CYC2SN_SNEAK_COUNT :: 2 // count
+LEVEL2_BETWEEN_4SNEAKS_COUNT :: 4 // count
+LEVEL2_BETWEEN_3CYC_TARGET :: 3 // count
+LEVEL2_BETWEEN_3CYC_SNEAK_INTERVAL :: 4.0 // s
+LEVEL2_WAVES_TO_VICTORY :: 5 // count
 
-PILLAR_COUNT :: 4 // count (pillars per finale wave; one per screen corner)
-PILLAR_HP :: 50 // hp (per pillar; only the next-in-order pillar takes damage at any time)
-PILLAR_FRAME_W :: 16 // px (sprite source)
-PILLAR_FRAME_H :: 16 // px (sprite source)
-PILLAR_FRAMES :: 4 // count (idle animation frames in enemy_pillar.png)
+LEVEL4_GRUNT_FIRE_INTERVAL :: 1.5 // s
+LEVEL4_WAVES_TO_VICTORY :: 4 // count
+
+PILLAR_COUNT :: 4 // count
+PILLAR_HP :: 50 // hp
+PILLAR_FRAME_W :: 16 // px
+PILLAR_FRAME_H :: 16 // px
+PILLAR_FRAMES :: 4 // count
 PILLAR_ANIM_FPS :: 6.0 // frames/s
-PILLAR_DRAW_SCALE :: 2 // multiplier (unitless)
-PILLAR_HIT_RADIUS :: 12.0 // px (slightly larger than the visible body — the order puzzle is the difficulty, not aim)
+PILLAR_DRAW_SCALE :: 2 // multiplier
+PILLAR_HIT_RADIUS :: 12.0 // px
 PILLAR_HIT_FLASH_TIME :: 0.08 // s
-PILLAR_CORNER_MARGIN :: 36.0 // px (from screen edges to pillar center at each corner)
-PILLAR_REVEAL_DUR :: 2.0 // s (numbers visible above each pillar on spawn)
-PILLAR_SHUFFLE_DUR :: 1.4 // s (each shuffle's lerp time; total preamble = REVEAL + SHUFFLE_DUR * SHUFFLE_COUNT)
-PILLAR_SHUFFLE_COUNT :: 2 // count (number of consecutive shuffles before combat starts)
-PILLAR_NUMBER_FONT_SIZE :: 20 // px (kill-order digit drawn above each pillar during reveal)
-PILLAR_FIRE_INTERVAL :: 0.1 // s (per-pillar burst cadence during combat)
-PILLAR_BULLETS_PER_BURST :: 3 // count (bullets emitted per burst, evenly spaced around the pillar)
-PILLAR_ANGLE_INC_DEG :: 8.0 // deg/burst (rotation of base angle; multiplied by spin_dir per corner)
+PILLAR_CORNER_MARGIN :: 36.0 // px
+PILLAR_REVEAL_DUR :: 4.0 // s
+PILLAR_SHUFFLE_DUR :: 1.4 // s
+PILLAR_SHUFFLE_COUNT :: 2 // count
+PILLAR_NUMBER_FONT_SIZE :: 20 // px
+PILLAR_FIRE_INTERVAL :: 0.1 // s
+PILLAR_BULLETS_PER_BURST :: 3 // count
+PILLAR_ANGLE_INC_DEG :: 8.0 // deg/burst
 PILLAR_BULLET_SPEED :: 75.0 // px/s
-PILLAR_BLOCKED_PARTICLES :: 3 // count (small white burst when a wrong-order shot is absorbed)
-PILLAR_KILL_SCORE :: 50 // points (per pillar killed)
+PILLAR_BLOCKED_PARTICLES :: 3 // count
+PILLAR_KILL_SCORE :: 50 // points
 
-MAX_LEVEL :: 4 // count (highest level the player can transition into; level 3 is the Morgan boss, level 4 alternates grunt and weirdguy waves)
+MAX_LEVEL :: 4 // count
 
-PAUSE_OVERLAY_ALPHA :: 200 // alpha [0..255] (dim overlay drawn behind the pause menu)
+PAUSE_OVERLAY_ALPHA :: 200 // alpha [0..255]
 PAUSE_TITLE_FONT_SIZE :: 20 // px
-PAUSE_TITLE_Y :: 50 // px (top y of "PAUSED" title)
-PAUSE_MENU_TOP_Y :: 130 // px (top y of the first menu row beneath the title)
-PAUSE_ITEM_FONT_SIZE :: 14 // px (menu item / slider label font)
-PAUSE_ITEM_GAP :: 14 // px (vertical gap between menu rows)
-PAUSE_BODY_FONT_SIZE :: 10 // px (controls list body font)
-PAUSE_BODY_LINE_GAP :: 14 // px (vertical pitch between control rows)
+PAUSE_TITLE_Y :: 50 // px
+PAUSE_MENU_TOP_Y :: 130 // px
+PAUSE_ITEM_FONT_SIZE :: 14 // px
+PAUSE_ITEM_GAP :: 14 // px
+PAUSE_BODY_FONT_SIZE :: 10 // px
+PAUSE_BODY_LINE_GAP :: 18 // px
 PAUSE_SLIDER_W :: 160 // px
 PAUSE_SLIDER_H :: 6 // px
-PAUSE_VOLUME_STEP :: 0.05 // multiplier (unitless; per left/right tap when adjusting volume sliders)
+PAUSE_VOLUME_STEP :: 0.05 // multiplier
+
+MAIN_MENU_OVERLAY_ALPHA :: 110 // alpha [0..255]
+MAIN_MENU_TITLE_FONT_SIZE :: 36 // px
+MAIN_MENU_TITLE_Y :: 70 // px
+MAIN_MENU_ITEMS_TOP_Y :: 170 // px
+
+MISSION_TITLE_FONT_SIZE :: 28 // px
+MISSION_SUBTITLE_FONT_SIZE :: 12 // px
+MISSION_TITLE_Y :: 84 // px
+MISSION_SUBTITLE_GAP :: 10 // px
+MISSION_TITLE_FADE_IN :: 0.5 // s
+MISSION_TITLE_HOLD :: 2.0 // s
+MISSION_TITLE_FADE_OUT :: 0.7 // s
+
+HINT_ICON_SIZE :: 16 // px
+HINT_ICON_GAP :: 2 // px
+HINT_TEXT_GAP :: 4 // px

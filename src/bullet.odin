@@ -14,6 +14,17 @@ Bullet_Kind :: enum {
 	Rapid_Fire,
 }
 
+// Tracks the entity that fired the bullet so the Riposte upgrade can home
+// reflected bullets back at it. .None means the bullet has no recoverable
+// source (player-side projectiles or burst children).
+Bullet_Source :: enum {
+	None,
+	Enemy,
+	Sneak,
+	Boss,
+	Pillar,
+}
+
 Bullet :: struct {
 	pos:       rl.Vector2,
 	vel:       rl.Vector2,
@@ -30,6 +41,15 @@ Bullet :: struct {
 	// MORGAN_ORB_BURST_COUNT-bullet ring on EOL. Visual + collision radius differ
 	// from the regular bullet path; collision hit-radius queried via bullet_hit_radius.
 	is_burst_orb: bool,
+	// Source entity that fired this bullet; used by Riposte to home a reflected
+	// bullet back at its original shooter.
+	source_kind:  Bullet_Source,
+	source_index: int,
+	// Set on reflection when the player owns Riposte. While true, the reflected
+	// bullet homes specifically at source_kind/source_index instead of the
+	// nearest-enemy fallback. Cleared if the source dies, so the bullet then
+	// re-acquires the nearest target.
+	lock_source:  bool,
 }
 
 Bullet_Pool :: struct {
@@ -41,6 +61,8 @@ spawn_bullet :: proc(
 	pos, vel: rl.Vector2,
 	color: rl.Color = rl.RED,
 	kind: Bullet_Kind = .Enemy,
+	source_kind: Bullet_Source = .None,
+	source_index: int = 0,
 ) {
 	life: f32 = BULLET_LIFE
 	if kind == .Rapid_Fire {
@@ -49,12 +71,14 @@ spawn_bullet :: proc(
 	for i in 0 ..< MAX_BULLETS {
 		if !pool.bullets[i].active {
 			pool.bullets[i] = Bullet {
-				pos    = pos,
-				vel    = vel,
-				life   = life,
-				color  = color,
-				kind   = kind,
-				active = true,
+				pos          = pos,
+				vel          = vel,
+				life         = life,
+				color        = color,
+				kind         = kind,
+				active       = true,
+				source_kind  = source_kind,
+				source_index = source_index,
 			}
 			return
 		}
@@ -72,6 +96,8 @@ spawn_energy_orb :: proc(pool: ^Bullet_Pool, pos, vel: rl.Vector2) {
 				kind         = .Enemy,
 				active       = true,
 				is_burst_orb = true,
+				source_kind  = .Boss,
+				source_index = 0,
 			}
 			return
 		}
@@ -86,13 +112,64 @@ bullet_hit_radius :: proc(b: ^Bullet) -> f32 {
 }
 
 @(private = "file")
+lookup_source_center :: proc(
+	kind: Bullet_Source,
+	index: int,
+	enemies: ^Enemy_Pool,
+	sneaks: ^Sneak_Pool,
+	boss: ^Boss_Pool,
+	pillars: ^Pillar_Wave,
+) -> (
+	pos: rl.Vector2,
+	alive: bool,
+) {
+	switch kind {
+	case .None:
+		return
+	case .Enemy:
+		if index < 0 || index >= ENEMY_COUNT {
+			return
+		}
+		e := &enemies.enemies[index]
+		if !e.active {
+			return
+		}
+		return enemy_center(e), true
+	case .Sneak:
+		if index < 0 || index >= SNEAK_MAX {
+			return
+		}
+		s := &sneaks.sneaks[index]
+		if !s.active {
+			return
+		}
+		return sneak_center(s), true
+	case .Boss:
+		if !boss.boss.active {
+			return
+		}
+		return boss_center(&boss.boss), true
+	case .Pillar:
+		if index < 0 || index >= PILLAR_COUNT {
+			return
+		}
+		p := &pillars.pillars[index]
+		if !p.active {
+			return
+		}
+		return pillar_center(p), true
+	}
+	return
+}
+
+@(private = "file")
 detonate_orb :: proc(pool: ^Bullet_Pool, pos: rl.Vector2) {
 	step := math.TAU / f32(MORGAN_ORB_BURST_COUNT)
 	color := rl.Color{200, 140, 255, 255}
 	for i in 0 ..< MORGAN_ORB_BURST_COUNT {
 		ang := f32(i) * step
 		vel := rl.Vector2{math.cos(ang) * MORGAN_ORB_BURST_SPEED, math.sin(ang) * MORGAN_ORB_BURST_SPEED}
-		spawn_bullet(pool, pos, vel, color)
+		spawn_bullet(pool, pos, vel, color, .Enemy, .Boss, 0)
 	}
 }
 
@@ -101,6 +178,7 @@ update_bullets :: proc(
 	enemies: ^Enemy_Pool,
 	sneaks: ^Sneak_Pool,
 	boss: ^Boss_Pool,
+	pillars: ^Pillar_Wave,
 	dt: f32,
 	world_dt: f32,
 ) {
@@ -112,59 +190,79 @@ update_bullets :: proc(
 		}
 		// Only Reflected bullets home; Rapid_Fire flies straight by design.
 		if b.kind == .Reflected {
-			best_target: rl.Vector2
-			best_d_sq := f32(1e18)
+			target: rl.Vector2
 			found := false
-			for ei in 0 ..< ENEMY_COUNT {
-				e := &enemies.enemies[ei]
-				if !e.active {
-					continue
-				}
-				ec := enemy_center(e)
-				dx := ec.x - b.pos.x
-				dy := ec.y - b.pos.y
-				d_sq := dx * dx + dy * dy
-				if d_sq < best_d_sq {
-					best_d_sq = d_sq
-					best_target = ec
+			// Riposte: lock onto the original shooter while it's still alive.
+			// If the source has died since deflection, drop the lock and let the
+			// nearest-target fallback take over.
+			if b.lock_source {
+				src_pos, alive := lookup_source_center(b.source_kind, b.source_index, enemies, sneaks, boss, pillars)
+				if alive {
+					target = src_pos
 					found = true
+				} else {
+					b.lock_source = false
 				}
 			}
-			for si in 0 ..< SNEAK_MAX {
-				s := &sneaks.sneaks[si]
-				if !s.active {
-					continue
+			if !found {
+				best_d_sq := f32(1e18)
+				for ei in 0 ..< ENEMY_COUNT {
+					e := &enemies.enemies[ei]
+					if !e.active {
+						continue
+					}
+					ec := enemy_center(e)
+					dx := ec.x - b.pos.x
+					dy := ec.y - b.pos.y
+					d_sq := dx * dx + dy * dy
+					if d_sq < best_d_sq {
+						best_d_sq = d_sq
+						target = ec
+						found = true
+					}
 				}
-				sc := sneak_center(s)
-				dx := sc.x - b.pos.x
-				dy := sc.y - b.pos.y
-				d_sq := dx * dx + dy * dy
-				if d_sq < best_d_sq {
-					best_d_sq = d_sq
-					best_target = sc
-					found = true
+				for si in 0 ..< SNEAK_MAX {
+					s := &sneaks.sneaks[si]
+					if !s.active {
+						continue
+					}
+					sc := sneak_center(s)
+					dx := sc.x - b.pos.x
+					dy := sc.y - b.pos.y
+					d_sq := dx * dx + dy * dy
+					if d_sq < best_d_sq {
+						best_d_sq = d_sq
+						target = sc
+						found = true
+					}
 				}
-			}
-			if boss.boss.active {
-				bc := boss_center(&boss.boss)
-				dx := bc.x - b.pos.x
-				dy := bc.y - b.pos.y
-				d_sq := dx * dx + dy * dy
-				if d_sq < best_d_sq {
-					best_d_sq = d_sq
-					best_target = bc
-					found = true
+				if boss.boss.active {
+					bc := boss_center(&boss.boss)
+					dx := bc.x - b.pos.x
+					dy := bc.y - b.pos.y
+					d_sq := dx * dx + dy * dy
+					if d_sq < best_d_sq {
+						best_d_sq = d_sq
+						target = bc
+						found = true
+					}
 				}
 			}
 			if found {
 				speed := rl.Vector2Length(b.vel)
 				if speed > 0.001 {
-					to_t := rl.Vector2Normalize(best_target - b.pos)
-					target_vel := to_t * speed
-					new_vel := b.vel * (1 - steer_k) + target_vel * steer_k
-					nlen := rl.Vector2Length(new_vel)
-					if nlen > 0.001 {
-						b.vel = new_vel * (speed / nlen)
+					to_t := rl.Vector2Normalize(target - b.pos)
+					if b.lock_source {
+						// Riposte: snap directly to the source so the dash direction
+						// doesn't matter — the bullet immediately tracks the shooter.
+						b.vel = to_t * speed
+					} else {
+						target_vel := to_t * speed
+						new_vel := b.vel * (1 - steer_k) + target_vel * steer_k
+						nlen := rl.Vector2Length(new_vel)
+						if nlen > 0.001 {
+							b.vel = new_vel * (speed / nlen)
+						}
 					}
 				}
 			}
@@ -223,6 +321,9 @@ collide_bullets_player :: proc(pool: ^Bullet_Pool, player: ^Player, audio: ^Audi
 		if player.dash_timer > 0 {
 			b.kind = .Reflected
 			b.vel = -b.vel
+			if .Riposte in player.upgrades {
+				b.lock_source = true
+			}
 			reflected_any = true
 			continue
 		}

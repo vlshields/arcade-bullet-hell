@@ -241,15 +241,15 @@ update_sneaks :: proc(pool: ^Sneak_Pool, player: ^Player, bullets: ^Bullet_Pool,
 
 		switch s.kind {
 		case .Sneak:
-			update_sneak_one(s, player_center, bullets, dt)
+			update_sneak_one(s, i, player_center, bullets, dt)
 		case .Cyclops:
-			update_cyclops_one(s, player_center, bullets, dt)
+			update_cyclops_one(s, i, player_center, bullets, dt)
 		}
 	}
 }
 
 @(private = "file")
-update_sneak_one :: proc(s: ^Sneak, player_center: rl.Vector2, bullets: ^Bullet_Pool, dt: f32) {
+update_sneak_one :: proc(s: ^Sneak, index: int, player_center: rl.Vector2, bullets: ^Bullet_Pool, dt: f32) {
 	d := &s.data.(Sneak_Data)
 
 	d.sway_phase += SNEAK_SWAY_FREQ * math.TAU * dt
@@ -285,7 +285,7 @@ update_sneak_one :: proc(s: ^Sneak, player_center: rl.Vector2, bullets: ^Bullet_
 				math.cos(angle) * SNEAK_BULLET_SPEED,
 				math.sin(angle) * SNEAK_BULLET_SPEED,
 			}
-			spawn_bullet(bullets, s.pos, vel, color)
+			spawn_bullet(bullets, s.pos, vel, color, .Enemy, .Sneak, index)
 		}
 	}
 }
@@ -293,6 +293,7 @@ update_sneak_one :: proc(s: ^Sneak, player_center: rl.Vector2, bullets: ^Bullet_
 @(private = "file")
 update_cyclops_one :: proc(
 	s: ^Sneak,
+	index: int,
 	player_center: rl.Vector2,
 	bullets: ^Bullet_Pool,
 	dt: f32,
@@ -352,7 +353,7 @@ update_cyclops_one :: proc(
 					math.cos(angle) * CYCLOPS_BULLET_SPEED,
 					math.sin(angle) * CYCLOPS_BULLET_SPEED,
 				}
-				spawn_bullet(bullets, s.pos, vel, color)
+				spawn_bullet(bullets, s.pos, vel, color, .Enemy, .Sneak, index)
 			}
 		}
 	case 1:
@@ -366,7 +367,7 @@ update_cyclops_one :: proc(
 					math.cos(angle) * CYCLOPS_BULLET_SPEED,
 					math.sin(angle) * CYCLOPS_BULLET_SPEED,
 				}
-				spawn_bullet(bullets, s.pos, vel, color)
+				spawn_bullet(bullets, s.pos, vel, color, .Enemy, .Sneak, index)
 			}
 		}
 	case 2:
@@ -381,7 +382,7 @@ update_cyclops_one :: proc(
 					math.cos(angle) * CYCLOPS_BULLET_SPEED,
 					math.sin(angle) * CYCLOPS_BULLET_SPEED,
 				}
-				spawn_bullet(bullets, s.pos, vel, color)
+				spawn_bullet(bullets, s.pos, vel, color, .Enemy, .Sneak, index)
 			}
 			d.spiral_angle += inc_rad
 			if d.spiral_angle >= math.TAU {

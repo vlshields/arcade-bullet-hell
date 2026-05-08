@@ -43,6 +43,19 @@ Game_State :: struct {
 	upgrade_cursor:       int,
 	paused:             bool,
 	pause:              Pause_Menu,
+	dialogue:           Dialogue,
+	in_menu:            bool,
+	main_menu:          Main_Menu,
+	pending_action:     Pending_Action,
+	mission_title:      Mission_Title,
+}
+
+// What the transition fade resolves to at its midpoint. Lets the same fade
+// state machine cover both menu->gameplay (Begin) and level->level (Advance).
+Pending_Action :: enum {
+	None,
+	Start_Game,
+	Advance_Mission,
 }
 
 @(private = "file")
@@ -54,6 +67,7 @@ init :: proc() {
 	rl.SetTargetFPS(60)
 
 	load_gamepad_mappings()
+	init_input_hints()
 
 	gs.render_target = rl.LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT)
 	rl.SetTextureFilter(gs.render_target.texture, .POINT)
@@ -78,8 +92,74 @@ init :: proc() {
 	init_boss(&gs.boss)
 	init_pillars(&gs.pillars)
 	init_healthpacks(&gs.healthpacks)
+	init_dialogue(&gs.dialogue)
+
+	gs.in_menu = true
+	reset_main_menu(&gs.main_menu)
 
 	gs.running = true
+}
+
+// Resets per-run gameplay state without reloading textures or shaders, so the
+// main menu can hand back into a fresh run. Mirrors what init() used to do
+// inline below the texture loads.
+@(private = "file")
+start_new_game :: proc() {
+	gs.level = 1
+	gs.score = 0
+	gs.victory = false
+	gs.transitioning = false
+	gs.transition_t = 0
+	gs.transition_swapped = false
+	gs.choosing_upgrade = false
+	gs.upgrade_choice_count = 0
+	gs.upgrade_cursor = 0
+
+	reset_player_for_new_game(&gs.player)
+
+	clear_world()
+	gs.enemies.level = 1
+	gs.enemies.waves_cleared = 0
+	gs.enemies.fire_interval = ENEMY_FIRE_INTERVAL
+	gs.enemies.boost_applied = false
+	gs.enemies.level2_waves_complete = 0
+	gs.enemies.level4_waves_complete = 0
+	gs.sneaks.level = 1
+	gs.boss.boss.active = false
+	gs.boss.boss.defeated = false
+
+	spawn_wave(&gs.enemies)
+	set_background_level(&gs.background, 1)
+	play_gameplay_music(&gs.audio)
+
+	gs.dialogue.intro_done = false
+	gs.dialogue.wave2_intro_done = false
+	start_level1_intro(&gs.dialogue)
+	show_mission_title(&gs.mission_title, gs.level)
+
+	gs.in_menu = false
+}
+
+@(private = "file")
+return_to_main_menu :: proc() {
+	gs.paused = false
+	gs.victory = false
+	gs.transitioning = false
+	gs.transition_t = 0
+	gs.transition_swapped = false
+	gs.choosing_upgrade = false
+	gs.upgrade_choice_count = 0
+	gs.dialogue.active = false
+	gs.mission_title.active = false
+	gs.pending_action = .None
+	clear_world()
+	stop_rapid_fire_sfx(&gs.audio)
+	stop_charging_beam_sfx(&gs.audio)
+	stop_golgotha_bullet_hell_sfx(&gs.audio)
+	play_gameplay_music(&gs.audio)
+	set_background_level(&gs.background, 1)
+	gs.in_menu = true
+	reset_main_menu(&gs.main_menu)
 }
 
 should_run :: proc() -> bool {
@@ -108,6 +188,48 @@ update :: proc() {
 
 	input_track_device()
 
+	// Transition state machine runs above the menu/gameplay split so the same
+	// fade can span Begin (menu->gameplay) and Advance (level->level).
+	if gs.transitioning {
+		gs.transition_t += dt
+		if !gs.transition_swapped && gs.transition_t >= TRANSITION_HALF_DUR {
+			switch gs.pending_action {
+			case .None:
+			case .Start_Game:
+				start_new_game()
+			case .Advance_Mission:
+				advance_to_next_mission()
+			}
+			gs.transition_swapped = true
+			gs.pending_action = .None
+		}
+		if gs.transition_t >= 2 * TRANSITION_HALF_DUR {
+			gs.transitioning = false
+			gs.transition_t = 0
+		}
+	}
+
+	if gs.in_menu {
+		// Background still scrolls under the menu so the title screen feels alive.
+		update_background(&gs.background, dt)
+		// Lock menu inputs while a Begin fade is mid-flight.
+		if !gs.transitioning {
+			begin_game := false
+			quit_app := false
+			update_main_menu(&gs.main_menu, &begin_game, &quit_app, &gs.audio)
+			if begin_game {
+				gs.transitioning = true
+				gs.transition_t = 0
+				gs.transition_swapped = false
+				gs.pending_action = .Start_Game
+			} else if quit_app {
+				gs.running = false
+			}
+		}
+		draw_menu_frame()
+		return
+	}
+
 	// Pause toggle is handled here (when not paused) and inside update_pause
 	// (when paused). Tracking just_opened keeps the same ESC press from both
 	// opening and immediately closing the menu on the same frame.
@@ -119,8 +241,14 @@ update :: proc() {
 			just_opened_pause = true
 		}
 	}
+	quit_to_menu := false
 	if gs.paused && !just_opened_pause {
-		update_pause(&gs.pause, &gs.paused, &gs.audio)
+		update_pause(&gs.pause, &gs.paused, &quit_to_menu, &gs.audio)
+	}
+	if quit_to_menu {
+		return_to_main_menu()
+		draw_menu_frame()
+		return
 	}
 
 	if !gs.paused {
@@ -128,6 +256,7 @@ update :: proc() {
 			gs.victory = true
 			clear_world()
 			open_upgrade_choice()
+			play_victory_music(&gs.audio)
 		}
 
 		// Level 2 has no boss yet; victory triggers once the scripted phase sequence
@@ -138,6 +267,7 @@ update :: proc() {
 			gs.victory = true
 			clear_world()
 			open_upgrade_choice()
+			play_victory_music(&gs.audio)
 		}
 
 		// Level 4 mirrors the level-2 wave-count gate; no boss, just the four
@@ -148,6 +278,7 @@ update :: proc() {
 			gs.victory = true
 			clear_world()
 			open_upgrade_choice()
+			play_victory_music(&gs.audio)
 		}
 
 		if gs.victory && gs.choosing_upgrade {
@@ -167,19 +298,10 @@ update :: proc() {
 			gs.transitioning = true
 			gs.transition_t = 0
 			gs.transition_swapped = false
+			gs.pending_action = .Advance_Mission
 		}
 
-		if gs.transitioning {
-			gs.transition_t += dt
-			if !gs.transition_swapped && gs.transition_t >= TRANSITION_HALF_DUR {
-				advance_to_next_mission()
-				gs.transition_swapped = true
-			}
-			if gs.transition_t >= 2 * TRANSITION_HALF_DUR {
-				gs.transitioning = false
-				gs.transition_t = 0
-			}
-		}
+		update_mission_title(&gs.mission_title, dt)
 
 		// Boss-driven world freeze (Morgan inter-phase pause): nothing but the
 		// boss ticks — HP refill animates and player input is ignored. Treated
@@ -189,14 +311,24 @@ update :: proc() {
 		// Slow-time only ticks during gameplay; outside gameplay world_dt = dt so
 		// the background scroll and timers run at full speed.
 		world_dt := dt
-		if !gs.victory && !gs.transitioning && !boss_pausing {
+		if !gs.victory && !gs.transitioning && !boss_pausing && !gs.dialogue.active {
 			world_dt = update_slow_time(&gs.player, dt)
 		}
 
-		// Background keeps scrolling during victory + transition so the world looks alive.
+		// Background keeps scrolling during victory + transition + dialogue so the
+		// world looks alive even while gameplay is frozen.
 		update_background(&gs.background, world_dt)
 
-		if !gs.victory && !gs.transitioning {
+		if gs.dialogue.active {
+			update_dialogue(&gs.dialogue, dt)
+		}
+
+		// Pre-wave hint scenes. Triggered before update_enemies sees the empty
+		// pool and spawns the next wave, so wave 2 grunts don't pop in mid-screen
+		// while the dialogue is up.
+		maybe_trigger_pre_wave_dialogue()
+
+		if !gs.victory && !gs.transitioning && !gs.dialogue.active {
 			if boss_pausing {
 				update_boss(&gs.boss, &gs.bullets, &gs.sneaks, dt)
 			} else {
@@ -247,7 +379,7 @@ update :: proc() {
 					dt,
 				)
 				update_particles(&gs.particles, world_dt)
-				update_bullets(&gs.bullets, &gs.enemies, &gs.sneaks, &gs.boss, dt, world_dt)
+				update_bullets(&gs.bullets, &gs.enemies, &gs.sneaks, &gs.boss, &gs.pillars, dt, world_dt)
 				collide_bullets_player(&gs.bullets, &gs.player, &gs.audio)
 				collide_bullets_enemies(
 					&gs.bullets,
@@ -305,6 +437,10 @@ update :: proc() {
 			)
 		}
 	}
+	draw_mission_title(&gs.mission_title)
+	if gs.dialogue.active {
+		draw_dialogue(&gs.dialogue)
+	}
 	if gs.transitioning {
 		draw_transition(gs.transition_t)
 	}
@@ -313,6 +449,11 @@ update :: proc() {
 	}
 	rl.EndTextureMode()
 
+	present_render_target()
+}
+
+@(private = "file")
+present_render_target :: proc() {
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.BLACK)
 	src := rl.Rectangle{0, 0, f32(SCREEN_WIDTH), -f32(SCREEN_HEIGHT)}
@@ -323,7 +464,23 @@ update :: proc() {
 		f32(SCREEN_HEIGHT) * gs.scale,
 	}
 	rl.DrawTexturePro(gs.render_target.texture, src, dst, {0, 0}, 0, rl.WHITE)
+	// Hint icons render directly to the window at native resolution so they
+	// dodge the render target's POINT upscale and stay readable.
+	flush_input_hints(gs.scale, gs.offset_x, gs.offset_y)
 	rl.EndDrawing()
+}
+
+@(private = "file")
+draw_menu_frame :: proc() {
+	rl.BeginTextureMode(gs.render_target)
+	rl.ClearBackground(rl.BLACK)
+	draw_background(&gs.background)
+	draw_main_menu(&gs.main_menu, &gs.audio)
+	if gs.transitioning {
+		draw_transition(gs.transition_t)
+	}
+	rl.EndTextureMode()
+	present_render_target()
 }
 
 shutdown :: proc() {
@@ -334,6 +491,8 @@ shutdown :: proc() {
 	unload_player(&gs.player)
 	unload_background(&gs.background)
 	unload_audio(&gs.audio)
+	unload_dialogue(&gs.dialogue)
+	unload_input_hints()
 	rl.UnloadRenderTexture(gs.render_target)
 	rl.CloseWindow()
 }
@@ -370,6 +529,26 @@ get_mouse_game_pos :: proc() -> rl.Vector2 {
 		return {0, 0}
 	}
 	return rl.Vector2{(wx - gs.offset_x) / gs.scale, (wy - gs.offset_y) / gs.scale}
+}
+
+@(private = "file")
+maybe_trigger_pre_wave_dialogue :: proc() {
+	if gs.dialogue.active || gs.victory || gs.transitioning {
+		return
+	}
+	if gs.level != 1 || gs.dialogue.wave2_intro_done {
+		return
+	}
+	// Wait until wave 1 is fully cleared but wave 2 hasn't started spawning yet.
+	if gs.enemies.waves_cleared != 0 {
+		return
+	}
+	for i in 0 ..< ENEMY_COUNT {
+		if gs.enemies.enemies[i].active {
+			return
+		}
+	}
+	start_level1_wave2_intro(&gs.dialogue)
 }
 
 clear_world :: proc() {
@@ -434,17 +613,22 @@ draw_victory :: proc(level: int, score: int, choosing: bool, has_next: bool) {
 		return
 	}
 
-	prompt: cstring
-	if input_last_device() == .Gamepad {
-		prompt = fmt.ctprintf("PRESS A FOR MISSION %d", level + 1)
-	} else {
-		prompt = fmt.ctprintf("PRESS ENTER FOR MISSION %d", level + 1)
-	}
-	prompt_w := rl.MeasureText(prompt, VICTORY_PROMPT_FONT_SIZE)
-	prompt_x: i32 = (SCREEN_WIDTH - prompt_w) / 2
+	pre := cstring("PRESS")
+	tail := fmt.ctprintf("FOR MISSION %d", level + 1)
+	pre_w := rl.MeasureText(pre, VICTORY_PROMPT_FONT_SIZE)
+	tail_w := rl.MeasureText(tail, VICTORY_PROMPT_FONT_SIZE)
+	icon_w := input_hint_width(.Confirm, HINT_ICON_SIZE)
+	total_w := pre_w + HINT_TEXT_GAP + icon_w + HINT_TEXT_GAP + tail_w
+	prompt_x: i32 = (SCREEN_WIDTH - total_w) / 2
 	prompt_y: i32 = score_y + VICTORY_SCORE_FONT_SIZE + 16
-	rl.DrawText(prompt, prompt_x + 1, prompt_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
-	rl.DrawText(prompt, prompt_x, prompt_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
+	icon_y := prompt_y + (VICTORY_PROMPT_FONT_SIZE - HINT_ICON_SIZE) / 2
+	rl.DrawText(pre, prompt_x + 1, prompt_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
+	rl.DrawText(pre, prompt_x, prompt_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
+	icon_x := prompt_x + pre_w + HINT_TEXT_GAP
+	draw_input_hint(.Confirm, icon_x, icon_y, HINT_ICON_SIZE)
+	tail_x := icon_x + icon_w + HINT_TEXT_GAP
+	rl.DrawText(tail, tail_x + 1, prompt_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
+	rl.DrawText(tail, tail_x, prompt_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
 }
 
 draw_upgrade_choice :: proc(choices: []Player_Upgrade, cursor: int) {
@@ -469,6 +653,7 @@ draw_upgrade_choice :: proc(choices: []Player_Upgrade, cursor: int) {
 		draw_upgrade_card(
 			x,
 			UPGRADE_CARDS_Y,
+			c,
 			name,
 			cue,
 			line1,
@@ -478,15 +663,37 @@ draw_upgrade_choice :: proc(choices: []Player_Upgrade, cursor: int) {
 		)
 	}
 
-	hint := input_hint(
-		"LEFT/RIGHT TO PICK   ENTER TO CONFIRM",
-		"DPAD TO PICK   A TO CONFIRM",
-	)
-	hint_w := rl.MeasureText(hint, VICTORY_PROMPT_FONT_SIZE)
-	hint_x: i32 = (i32(SCREEN_WIDTH) - hint_w) / 2
+	// "[step icon] PICK    [confirm icon] CONFIRM" — same layout for kb/gp,
+	// just different icons.
+	pick := cstring("PICK")
+	confirm := cstring("CONFIRM")
+	step_icon_w := input_hint_width(.Menu_Step_Horizontal, HINT_ICON_SIZE)
+	confirm_icon_w := input_hint_width(.Confirm, HINT_ICON_SIZE)
+	pick_w := rl.MeasureText(pick, VICTORY_PROMPT_FONT_SIZE)
+	confirm_w := rl.MeasureText(confirm, VICTORY_PROMPT_FONT_SIZE)
+	section_gap: i32 = 16
+	hint_total :=
+		step_icon_w +
+		HINT_TEXT_GAP +
+		pick_w +
+		section_gap +
+		confirm_icon_w +
+		HINT_TEXT_GAP +
+		confirm_w
+	hint_x: i32 = (i32(SCREEN_WIDTH) - hint_total) / 2
 	hint_y: i32 = UPGRADE_CARDS_Y + UPGRADE_CARD_H + 10
-	rl.DrawText(hint, hint_x + 1, hint_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
-	rl.DrawText(hint, hint_x, hint_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
+	icon_y := hint_y + (VICTORY_PROMPT_FONT_SIZE - HINT_ICON_SIZE) / 2
+
+	cursor := hint_x
+	draw_input_hint(.Menu_Step_Horizontal, cursor, icon_y, HINT_ICON_SIZE)
+	cursor += step_icon_w + HINT_TEXT_GAP
+	rl.DrawText(pick, cursor + 1, hint_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
+	rl.DrawText(pick, cursor, hint_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
+	cursor += pick_w + section_gap
+	draw_input_hint(.Confirm, cursor, icon_y, HINT_ICON_SIZE)
+	cursor += confirm_icon_w + HINT_TEXT_GAP
+	rl.DrawText(confirm, cursor + 1, hint_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
+	rl.DrawText(confirm, cursor, hint_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
 }
 
 @(private = "file")
@@ -501,8 +708,10 @@ upgrade_card_info :: proc(
 ) {
 	switch u {
 	case .Slow_Time:
+		// cue text alone is "HOLD"; draw_upgrade_card appends the slow-time
+		// icon (SHIFT / LT) so the prompt matches the player's active device.
 		return "SLOW TIME",
-			input_hint("HOLD SHIFT", "HOLD LT"),
+			"HOLD",
 			"BENDS WORLD TO HALF SPEED",
 			"DRAINS STAMINA WHILE HELD",
 			rl.Color{80, 180, 255, 255}
@@ -524,6 +733,18 @@ upgrade_card_info :: proc(
 			"5-WAY LASER SPREAD (20 DEG)",
 			"RANGE REDUCED BY 50%",
 			rl.Color{255, 200, 80, 255}
+	case .Riposte:
+		return "RIPOSTE",
+			"ON DEFLECT",
+			"DEFLECTED BULLETS AUTO-TRACK",
+			"THE ENEMY THAT FIRED THEM",
+			rl.Color{160, 220, 255, 255}
+	case .Lucky_Shot:
+		return "LUCKY SHOT",
+			"ON DASH",
+			"YOU GAIN ONE MORE DASH MISSILE",
+			"AT NO EXTRA STAMINA COST",
+			rl.Color{255, 220, 120, 255}
 	}
 	return
 }
@@ -534,7 +755,7 @@ upgrade_card_info :: proc(
 // pool is empty (all relevant upgrades owned) the picker is skipped entirely.
 @(private = "file")
 open_upgrade_choice :: proc() {
-	pool: [4]Player_Upgrade
+	pool: [6]Player_Upgrade
 	n := 0
 	for u in Player_Upgrade {
 		if u in gs.player.upgrades {
@@ -544,6 +765,10 @@ open_upgrade_choice :: proc() {
 			continue
 		}
 		if u == .Beam_Blast && .Rapid_Fire in gs.player.upgrades {
+			continue
+		}
+		// Lucky Shot only matters with Dash Frenzy — don't offer it before then.
+		if u == .Lucky_Shot && .Dash_Frenzy not_in gs.player.upgrades {
 			continue
 		}
 		pool[n] = u
@@ -572,6 +797,7 @@ open_upgrade_choice :: proc() {
 @(private = "file")
 draw_upgrade_card :: proc(
 	x, y: i32,
+	upgrade: Player_Upgrade,
 	name: cstring,
 	cue: cstring,
 	line1: cstring,
@@ -598,10 +824,18 @@ draw_upgrade_card :: proc(
 	rl.DrawText(name, nx + 1, ny + 1, UPGRADE_NAME_FONT_SIZE, rl.BLACK)
 	rl.DrawText(name, nx, ny, UPGRADE_NAME_FONT_SIZE, accent)
 
-	cue_w := rl.MeasureText(cue, UPGRADE_BODY_FONT_SIZE)
-	cx := x + (UPGRADE_CARD_W - cue_w) / 2
+	cue_text_w := rl.MeasureText(cue, UPGRADE_BODY_FONT_SIZE)
+	icon_w: i32 = 0
+	if upgrade == .Slow_Time {
+		icon_w = input_hint_width(.Slow_Time, HINT_ICON_SIZE) + HINT_TEXT_GAP
+	}
+	cx := x + (UPGRADE_CARD_W - (cue_text_w + icon_w)) / 2
 	cy := ny + UPGRADE_NAME_FONT_SIZE + 6
 	rl.DrawText(cue, cx, cy, UPGRADE_BODY_FONT_SIZE, rl.Color{200, 200, 200, 255})
+	if upgrade == .Slow_Time {
+		icon_y := cy + (UPGRADE_BODY_FONT_SIZE - HINT_ICON_SIZE) / 2
+		draw_input_hint(.Slow_Time, cx + cue_text_w + HINT_TEXT_GAP, icon_y, HINT_ICON_SIZE)
+	}
 
 	l1_w := rl.MeasureText(line1, UPGRADE_BODY_FONT_SIZE)
 	l1x := x + (UPGRADE_CARD_W - l1_w) / 2
@@ -617,6 +851,7 @@ draw_upgrade_card :: proc(
 advance_to_next_mission :: proc() {
 	gs.level += 1
 	gs.victory = false
+	play_gameplay_music(&gs.audio)
 	set_background_level(&gs.background, gs.level)
 	clear_world()
 	// Boss flag reset so a level-2 boss can later trigger the victory branch again.
@@ -637,6 +872,7 @@ advance_to_next_mission :: proc() {
 	}
 	gs.player.hp = PLAYER_MAX_HP
 	gs.player.shrink_bombs = SHRINK_BOMBS_PER_LEVEL
+	show_mission_title(&gs.mission_title, gs.level)
 }
 
 draw_transition :: proc(t: f32) {
@@ -669,7 +905,12 @@ smoothstep :: proc(t: f32) -> f32 {
 update_screen_scale :: proc() {
 	sx := f32(gs.window_w) / f32(SCREEN_WIDTH)
 	sy := f32(gs.window_h) / f32(SCREEN_HEIGHT)
-	gs.scale = min(sx, sy)
-	gs.offset_x = (f32(gs.window_w) - f32(SCREEN_WIDTH) * gs.scale) * 0.5
-	gs.offset_y = (f32(gs.window_h) - f32(SCREEN_HEIGHT) * gs.scale) * 0.5
+	raw_scale := min(sx, sy)
+	if raw_scale >= 1 {
+		gs.scale = f32(int(raw_scale))
+	} else {
+		gs.scale = raw_scale
+	}
+	gs.offset_x = f32(int((f32(gs.window_w) - f32(SCREEN_WIDTH) * gs.scale) * 0.5))
+	gs.offset_y = f32(int((f32(gs.window_h) - f32(SCREEN_HEIGHT) * gs.scale) * 0.5))
 }

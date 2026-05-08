@@ -19,7 +19,7 @@ reset_pause_menu :: proc(pm: ^Pause_Menu) {
 	pm.cursor = 0
 }
 
-update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, audio: ^Audio) {
+update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio: ^Audio) {
 	switch pm.screen {
 	case .Main:
 		// Toggle takes priority on Main so ESC / Start closes the menu.
@@ -43,7 +43,8 @@ update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, audio: ^Audio) {
 				pm.screen = .Controls
 				pm.cursor = 0
 			case 3:
-				// Quit: placeholder per spec.
+				quit_to_menu^ = true
+				paused^ = false
 			}
 		}
 
@@ -111,7 +112,6 @@ draw_pause_main :: proc(cursor: int) {
 	}
 }
 
-@(private = "file")
 draw_pause_options :: proc(cursor: int, audio: ^Audio) {
 	row_h: i32 = PAUSE_ITEM_FONT_SIZE + PAUSE_SLIDER_H + 10
 	y: i32 = PAUSE_MENU_TOP_Y
@@ -122,7 +122,6 @@ draw_pause_options :: proc(cursor: int, audio: ^Audio) {
 	draw_menu_label(cstring("BACK"), y, cursor == 2)
 }
 
-@(private = "file")
 draw_pause_controls :: proc() {
 	on_gamepad := input_last_device() == .Gamepad
 
@@ -137,60 +136,48 @@ draw_pause_controls :: proc() {
 	rl.DrawText(header, hx, hy, PAUSE_ITEM_FONT_SIZE, rl.YELLOW)
 
 	y := hy + PAUSE_ITEM_FONT_SIZE + 10
-	if on_gamepad {
-		draw_control_row(cstring("MOVE"), cstring("LEFT STICK / DPAD"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("ATTACK"), cstring("RT"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("DASH"), cstring("B"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("SLOW TIME"), cstring("LT"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("SHRINK BOMB"), cstring("X"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("PAUSE"), cstring("START"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("CONFIRM"), cstring("A"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("BACK"), cstring("B"), y)
-	} else {
-		draw_control_row(cstring("MOVE"), cstring("WASD / ARROWS"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("ATTACK"), cstring("MOUSE LEFT"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("DASH"), cstring("SPACE"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("SLOW TIME"), cstring("LEFT SHIFT"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("SHRINK BOMB"), cstring("F"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("PAUSE"), cstring("ESCAPE"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("CONFIRM"), cstring("ENTER"), y)
-		y += PAUSE_BODY_LINE_GAP
-		draw_control_row(cstring("BACK"), cstring("ESCAPE"), y)
-	}
+	draw_control_row(cstring("MOVE"), .Move, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("ATTACK"), .Attack, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("DASH"), .Dash, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("SLOW TIME"), .Slow_Time, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("SHRINK BOMB"), .Shrink_Bomb, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("PAUSE"), .Pause, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("CONFIRM"), .Confirm, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("BACK"), .Back, y)
 
-	hint := input_hint("ENTER TO RETURN", "A TO RETURN")
-	hint_w := rl.MeasureText(hint, PAUSE_BODY_FONT_SIZE)
-	rl.DrawText(
-		hint,
-		(i32(SCREEN_WIDTH) - hint_w) / 2,
-		SCREEN_HEIGHT - 22,
-		PAUSE_BODY_FONT_SIZE,
-		rl.WHITE,
-	)
+	draw_return_hint()
 }
 
-@(private = "file")
-draw_control_row :: proc(label, bind: cstring, y: i32) {
+// "[icon] RETURN" centered along the bottom of the controls screen.
+draw_return_hint :: proc() {
+	tail := cstring("RETURN")
+	icon_w := input_hint_width(.Confirm, HINT_ICON_SIZE)
+	tail_w := rl.MeasureText(tail, PAUSE_BODY_FONT_SIZE)
+	total_w := icon_w + HINT_TEXT_GAP + tail_w
+	x := (i32(SCREEN_WIDTH) - total_w) / 2
+	y: i32 = SCREEN_HEIGHT - 22
+	icon_y := y + (PAUSE_BODY_FONT_SIZE - HINT_ICON_SIZE) / 2
+	draw_input_hint(.Confirm, x, icon_y, HINT_ICON_SIZE)
+	rl.DrawText(tail, x + icon_w + HINT_TEXT_GAP, y, PAUSE_BODY_FONT_SIZE, rl.WHITE)
+}
+
+// Body rows are taller than the font now so icons fit; the label sits centered
+// vertically inside the row's icon-height band.
+draw_control_row :: proc(label: cstring, kind: Input_Hint, y: i32) {
 	label_x: i32 = SCREEN_WIDTH / 2 - 110
-	bind_x: i32 = SCREEN_WIDTH / 2 + 10
-	rl.DrawText(label, label_x, y, PAUSE_BODY_FONT_SIZE, rl.WHITE)
-	rl.DrawText(bind, bind_x, y, PAUSE_BODY_FONT_SIZE, rl.Color{200, 200, 220, 255})
+	icon_x: i32 = SCREEN_WIDTH / 2 + 10
+	label_y := y + (HINT_ICON_SIZE - PAUSE_BODY_FONT_SIZE) / 2
+	rl.DrawText(label, label_x, label_y, PAUSE_BODY_FONT_SIZE, rl.WHITE)
+	draw_input_hint(kind, icon_x, y, HINT_ICON_SIZE)
 }
 
-@(private = "file")
 draw_menu_label :: proc(text: cstring, y: i32, selected: bool) {
 	color := rl.Color{180, 180, 180, 255}
 	if selected {
@@ -206,7 +193,6 @@ draw_menu_label :: proc(text: cstring, y: i32, selected: bool) {
 	}
 }
 
-@(private = "file")
 draw_menu_slider :: proc(label: cstring, value: f32, y: i32, selected: bool) {
 	color := rl.Color{180, 180, 180, 255}
 	if selected {
