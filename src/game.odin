@@ -1,0 +1,1531 @@
+package game
+
+import "core:math"
+import rl "vendor:raylib"
+import "core:fmt"
+import "core:math/rand"
+import "core:strings"
+
+
+// #region Audio
+Audio :: struct {
+	music_volume:             f32,
+	sfx_volume:               f32,
+	// theme2 loops during gameplay; theme1 takes over while a victory screen is
+	// up and yields back to theme2 on advance_to_next_mission. on_victory tracks
+	// which stream update_audio should advance.
+	theme1:                   rl.Music,
+	theme2:                   rl.Music,
+	on_victory:               bool,
+	sfx_charged_beam:         rl.Sound,
+	sfx_charging_beam:        rl.Sound,
+	sfx_dash:                 rl.Sound,
+	sfx_golgotha_bullet_hell: rl.Sound,
+	sfx_laser:                rl.Sound,
+	sfx_rapid_fire:           rl.Sound,
+	sfx_reflects_bullet:      rl.Sound,
+	sfx_shrink_bullets:       rl.Sound,
+	sfx_takes_damage:         rl.Sound,
+}
+
+init_audio :: proc(a: ^Audio) {
+	rl.InitAudioDevice()
+	a.music_volume = MUSIC_VOLUME
+	a.sfx_volume = SFX_VOLUME
+
+	a.theme1 = rl.LoadMusicStream("assets/audio/soundtrack/themesong1.ogg")
+	a.theme1.looping = true
+	a.theme2 = rl.LoadMusicStream("assets/audio/soundtrack/themesong2.ogg")
+	a.theme2.looping = true
+	rl.SetMusicVolume(a.theme1, a.music_volume)
+	rl.SetMusicVolume(a.theme2, a.music_volume)
+	rl.PlayMusicStream(a.theme2)
+
+	a.sfx_charged_beam = rl.LoadSound("assets/audio/sfx/player_charged_beam.wav")
+	a.sfx_charging_beam = rl.LoadSound("assets/audio/sfx/player_charging_beam.wav")
+	a.sfx_dash = rl.LoadSound("assets/audio/sfx/player_dash.wav")
+	a.sfx_golgotha_bullet_hell = rl.LoadSound("assets/audio/golgotha_bullet_hell.wav")
+	a.sfx_laser = rl.LoadSound("assets/audio/sfx/player_laser.wav")
+	a.sfx_rapid_fire = rl.LoadSound("assets/audio/sfx/player_rapid_fire.wav")
+	a.sfx_reflects_bullet = rl.LoadSound("assets/audio/sfx/player_reflects_bullet.wav")
+	a.sfx_shrink_bullets = rl.LoadSound("assets/audio/sfx/player_shrink_bullets.wav")
+	a.sfx_takes_damage = rl.LoadSound("assets/audio/sfx/player_takes_damage.wav")
+
+	apply_sfx_volume(a)
+}
+
+update_audio :: proc(a: ^Audio) {
+	if a.on_victory {
+		rl.UpdateMusicStream(a.theme1)
+	} else {
+		rl.UpdateMusicStream(a.theme2)
+	}
+}
+
+// Swap to the victory loop. Idempotent: safe to call every frame the victory
+// screen is up.
+play_victory_music :: proc(a: ^Audio) {
+	if a.on_victory {
+		return
+	}
+	rl.StopMusicStream(a.theme2)
+	rl.PlayMusicStream(a.theme1)
+	a.on_victory = true
+}
+
+// Swap back to the gameplay loop. Idempotent.
+play_gameplay_music :: proc(a: ^Audio) {
+	if !a.on_victory {
+		return
+	}
+	rl.StopMusicStream(a.theme1)
+	rl.PlayMusicStream(a.theme2)
+	a.on_victory = false
+}
+
+unload_audio :: proc(a: ^Audio) {
+	rl.StopMusicStream(a.theme1)
+	rl.StopMusicStream(a.theme2)
+	rl.UnloadMusicStream(a.theme1)
+	rl.UnloadMusicStream(a.theme2)
+	rl.UnloadSound(a.sfx_charged_beam)
+	rl.UnloadSound(a.sfx_charging_beam)
+	rl.UnloadSound(a.sfx_dash)
+	rl.UnloadSound(a.sfx_golgotha_bullet_hell)
+	rl.UnloadSound(a.sfx_laser)
+	rl.UnloadSound(a.sfx_rapid_fire)
+	rl.UnloadSound(a.sfx_reflects_bullet)
+	rl.UnloadSound(a.sfx_shrink_bullets)
+	rl.UnloadSound(a.sfx_takes_damage)
+	rl.CloseAudioDevice()
+}
+
+set_music_volume :: proc(a: ^Audio, v: f32) {
+	a.music_volume = clamp(v, 0.0, 1.0)
+	rl.SetMusicVolume(a.theme1, a.music_volume)
+	rl.SetMusicVolume(a.theme2, a.music_volume)
+}
+
+set_sfx_volume :: proc(a: ^Audio, v: f32) {
+	a.sfx_volume = clamp(v, 0.0, 1.0)
+	apply_sfx_volume(a)
+}
+
+@(private = "file")
+apply_sfx_volume :: proc(a: ^Audio) {
+	rl.SetSoundVolume(a.sfx_charged_beam, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_charging_beam, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_dash, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_golgotha_bullet_hell, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_laser, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_rapid_fire, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_reflects_bullet, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_shrink_bullets, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_takes_damage, a.sfx_volume)
+}
+
+play_dash_sfx :: proc(a: ^Audio)          {rl.PlaySound(a.sfx_dash)}
+play_laser_sfx :: proc(a: ^Audio)         {rl.PlaySound(a.sfx_laser)}
+play_charged_beam_sfx :: proc(a: ^Audio)  {rl.PlaySound(a.sfx_charged_beam)}
+play_reflect_sfx :: proc(a: ^Audio)       {rl.PlaySound(a.sfx_reflects_bullet)}
+play_shrink_bomb_sfx :: proc(a: ^Audio)   {rl.PlaySound(a.sfx_shrink_bullets)}
+play_player_damage_sfx :: proc(a: ^Audio) {rl.PlaySound(a.sfx_takes_damage)}
+
+// Charging-beam cue is held by retriggering a short clip whenever the previous
+// instance has finished. Call every frame while the player is charging, and
+// stop_charging_beam_sfx when charging ends or aborts.
+tick_charging_beam_sfx :: proc(a: ^Audio) {
+	if !rl.IsSoundPlaying(a.sfx_charging_beam) {
+		rl.PlaySound(a.sfx_charging_beam)
+	}
+}
+
+stop_charging_beam_sfx :: proc(a: ^Audio) {
+	rl.StopSound(a.sfx_charging_beam)
+}
+
+// Rapid-fire and Golgatha bullet-hell sfx are pre-rendered loops (see the .ck
+// sources next to the wavs). Same retrigger-when-finished pattern as the
+// charging beam: tick every frame the source is active, stop when it isn't.
+tick_rapid_fire_sfx :: proc(a: ^Audio) {
+	if !rl.IsSoundPlaying(a.sfx_rapid_fire) {
+		rl.PlaySound(a.sfx_rapid_fire)
+	}
+}
+
+stop_rapid_fire_sfx :: proc(a: ^Audio) {
+	rl.StopSound(a.sfx_rapid_fire)
+}
+
+tick_golgotha_bullet_hell_sfx :: proc(a: ^Audio) {
+	if !rl.IsSoundPlaying(a.sfx_golgotha_bullet_hell) {
+		rl.PlaySound(a.sfx_golgotha_bullet_hell)
+	}
+}
+
+stop_golgotha_bullet_hell_sfx :: proc(a: ^Audio) {
+	rl.StopSound(a.sfx_golgotha_bullet_hell)
+}
+// #endregion
+
+// #region Game Backdrops
+
+Background :: struct {
+	textures:    [BG_LAYERS]rl.Texture2D,
+	offsets:     [BG_LAYERS]f32,
+	speeds:      [BG_LAYERS]f32,
+	// Level 3+ swaps the parallax stack for a single static image with a wave-shader
+	// distortion. shader_mode tracks that swap; seconds drives the shader's animation.
+	wave:        Wave_Shader,
+	seconds:     f32,
+	shader_mode: bool,
+}
+
+init_background :: proc(bg: ^Background) {
+	bg.speeds = {10, 25, 60}
+	bg.wave = load_wave_shader()
+	load_bg_textures(bg, 1)
+}
+
+unload_background :: proc(bg: ^Background) {
+	unload_wave_shader(&bg.wave)
+	for i in 0 ..< BG_LAYERS {
+		rl.UnloadTexture(bg.textures[i])
+	}
+}
+
+set_background_level :: proc(bg: ^Background, level: int) {
+	for i in 0 ..< BG_LAYERS {
+		rl.UnloadTexture(bg.textures[i])
+		bg.textures[i] = {}
+		bg.offsets[i] = 0
+	}
+	bg.shader_mode = level == 3
+	bg.seconds = 0
+	load_bg_textures(bg, level)
+}
+
+@(private = "file")
+bg_path :: proc(level: int, i: int) -> cstring {
+	if level <= 1 {
+		return fmt.ctprintf("assets/parallaxbg%d.png", i)
+	}
+	if level == 3 {
+		return "assets/level3_bg.png"
+	}
+	// Level 4 reuses the level-2 parallax stack for now.
+	return fmt.ctprintf("assets/level2_parallaxbg%d.png", i)
+}
+
+// The bg0 file may be a stacked atlas of all BG_LAYERS frames (one per
+// SCREEN_HEIGHT row), in which case bg1/bg2 files are ignored. Level 3+
+// uses a single non-scrolling image and ignores the layer machinery entirely.
+@(private = "file")
+load_bg_textures :: proc(bg: ^Background, level: int) {
+	if bg.shader_mode {
+		bg.textures[0] = rl.LoadTexture(bg_path(level, 0))
+		rl.SetTextureFilter(bg.textures[0], .POINT)
+		return
+	}
+
+	img := rl.LoadImage(bg_path(level, 0))
+	defer rl.UnloadImage(img)
+
+	if img.height >= SCREEN_HEIGHT * BG_LAYERS {
+		for i in 0 ..< BG_LAYERS {
+			rec := rl.Rectangle{0, f32(i * SCREEN_HEIGHT), f32(img.width), f32(SCREEN_HEIGHT)}
+			slice := rl.ImageFromImage(img, rec)
+			bg.textures[i] = rl.LoadTextureFromImage(slice)
+			rl.UnloadImage(slice)
+			rl.SetTextureFilter(bg.textures[i], .POINT)
+		}
+		return
+	}
+
+	bg.textures[0] = rl.LoadTextureFromImage(img)
+	rl.SetTextureFilter(bg.textures[0], .POINT)
+	for i in 1 ..< BG_LAYERS {
+		bg.textures[i] = rl.LoadTexture(bg_path(level, i))
+		rl.SetTextureFilter(bg.textures[i], .POINT)
+	}
+}
+
+update_background :: proc(bg: ^Background, dt: f32) {
+	if bg.shader_mode {
+		bg.seconds += dt
+		return
+	}
+	for i in 0 ..< BG_LAYERS {
+		h := f32(bg.textures[i].height)
+		bg.offsets[i] += bg.speeds[i] * dt
+		for bg.offsets[i] >= h {
+			bg.offsets[i] -= h
+		}
+	}
+}
+
+draw_background :: proc(bg: ^Background) {
+	if bg.shader_mode {
+		tex := bg.textures[0]
+		if tex.id == 0 {
+			return
+		}
+		set_wave_seconds(&bg.wave, bg.seconds)
+		rl.BeginShaderMode(bg.wave.shader)
+		rl.DrawTexture(tex, 0, 0, rl.WHITE)
+		rl.EndShaderMode()
+		return
+	}
+	for i in 0 ..< BG_LAYERS {
+		tex := bg.textures[i]
+		if tex.height <= 0 {
+			continue
+		}
+		h := f32(tex.height)
+		y := bg.offsets[i] - h
+		for cy := y; cy < f32(SCREEN_HEIGHT); cy += h {
+			rl.DrawTexture(tex, 0, i32(cy), rl.WHITE)
+		}
+	}
+}
+
+
+// #endregion
+
+//#region Mission I: Raid Golgatha's Headquarters
+
+
+// Stage-card title shown for a few seconds when a mission begins. 
+
+Mission_Title :: struct {
+	active:   bool,
+	timer:    f32,
+	title:    cstring,
+	subtitle: cstring,
+}
+
+show_mission_title :: proc(mt: ^Mission_Title, level: int) {
+	title, sub, ok := mission_strings(level)
+	if !ok {
+		mt.active = false
+		return
+	}
+	mt.title = title
+	mt.subtitle = sub
+	mt.timer = 0
+	mt.active = true
+}
+
+@(private = "file")
+mission_strings :: proc(level: int) -> (title: cstring, sub: cstring, ok: bool) {
+	switch level {
+	case 1:
+		return cstring("MISSION I"), cstring("RAID GOLGATHA'S HEADQUARTERS"), true
+	}
+	return "", "", false
+}
+
+update_mission_title :: proc(mt: ^Mission_Title, dt: f32) {
+	if !mt.active {
+		return
+	}
+	mt.timer += dt
+	total := f32(MISSION_TITLE_FADE_IN + MISSION_TITLE_HOLD + MISSION_TITLE_FADE_OUT)
+	if mt.timer >= total {
+		mt.active = false
+	}
+}
+
+draw_mission_title :: proc(mt: ^Mission_Title) {
+	if !mt.active {
+		return
+	}
+	a := mission_title_alpha(mt.timer)
+	if a == 0 {
+		return
+	}
+
+	tw := rl.MeasureText(mt.title, MISSION_TITLE_FONT_SIZE)
+	tx := (i32(SCREEN_WIDTH) - tw) / 2
+	ty: i32 = MISSION_TITLE_Y
+	rl.DrawText(mt.title, tx + 2, ty + 2, MISSION_TITLE_FONT_SIZE, rl.Color{0, 0, 0, a})
+	rl.DrawText(mt.title, tx, ty, MISSION_TITLE_FONT_SIZE, rl.Color{255, 220, 80, a})
+
+	sw := rl.MeasureText(mt.subtitle, MISSION_SUBTITLE_FONT_SIZE)
+	sx := (i32(SCREEN_WIDTH) - sw) / 2
+	sy: i32 = ty + MISSION_TITLE_FONT_SIZE + MISSION_SUBTITLE_GAP
+	rl.DrawText(mt.subtitle, sx + 1, sy + 1, MISSION_SUBTITLE_FONT_SIZE, rl.Color{0, 0, 0, a})
+	rl.DrawText(mt.subtitle, sx, sy, MISSION_SUBTITLE_FONT_SIZE, rl.Color{220, 220, 240, a})
+}
+
+@(private = "file")
+mission_title_alpha :: proc(t: f32) -> u8 {
+	fade_in := f32(MISSION_TITLE_FADE_IN)
+	hold := f32(MISSION_TITLE_HOLD)
+	fade_out := f32(MISSION_TITLE_FADE_OUT)
+	a: f32
+	switch {
+	case t < fade_in:
+		a = smoothstep(t / fade_in)
+	case t < fade_in + hold:
+		a = 1
+	case t < fade_in + hold + fade_out:
+		a = 1 - smoothstep((t - fade_in - hold) / fade_out)
+	case:
+		a = 0
+	}
+	if a < 0 {
+		a = 0
+	}
+	if a > 1 {
+		a = 1
+	}
+	return u8(a * 255)
+}
+
+//#endregion
+
+// #region Drops (Health,etc)
+HealthPack :: struct {
+	pos:    rl.Vector2,
+	phase:  f32,
+	active: bool,
+}
+
+HealthPack_Pool :: struct {
+	packs: [HEALTHPACK_MAX]HealthPack,
+}
+
+init_healthpacks :: proc(pool: ^HealthPack_Pool) {
+	for i in 0 ..< HEALTHPACK_MAX {
+		pool.packs[i].active = false
+	}
+}
+
+try_drop_healthpack :: proc(pool: ^HealthPack_Pool, pos: rl.Vector2) {
+	if rand.float32() >= HEALTHPACK_DROP_CHANCE {
+		return
+	}
+	for i in 0 ..< HEALTHPACK_MAX {
+		if !pool.packs[i].active {
+			pool.packs[i] = HealthPack {
+				pos    = pos,
+				phase  = rand.float32() * math.TAU,
+				active = true,
+			}
+			return
+		}
+	}
+}
+
+update_healthpacks :: proc(pool: ^HealthPack_Pool, player: ^Player, dt: f32) {
+	pcx := player.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
+	pcy := player.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
+	r := f32(PLAYER_HIT_RADIUS) + HEALTHPACK_RADIUS
+	r_sq := r * r
+	for i in 0 ..< HEALTHPACK_MAX {
+		h := &pool.packs[i]
+		if !h.active {
+			continue
+		}
+		h.pos.y += HEALTHPACK_DRIFT_SPEED * dt
+		// Once the pack scrolls past the bottom edge (with a small slack so the
+		// pulsing glow finishes off-screen rather than popping mid-screen), the
+		// chance is gone.
+		if h.pos.y - HEALTHPACK_ARM > f32(SCREEN_HEIGHT) {
+			h.active = false
+			continue
+		}
+
+		dx := h.pos.x - pcx
+		dy := h.pos.y - pcy
+		if dx * dx + dy * dy <= r_sq {
+			h.active = false
+			player.hp += HEALTHPACK_HEAL
+			if player.hp > PLAYER_MAX_HP {
+				player.hp = PLAYER_MAX_HP
+			}
+		}
+	}
+}
+
+draw_healthpacks :: proc(pool: ^HealthPack_Pool) {
+	t := f32(rl.GetTime())
+	for i in 0 ..< HEALTHPACK_MAX {
+		h := &pool.packs[i]
+		if !h.active {
+			continue
+		}
+		pulse: f32 = 0.85 + math.sin(t * HEALTHPACK_PULSE_HZ * math.TAU + h.phase) * 0.15
+		arm: f32 = HEALTHPACK_ARM * pulse
+		thick: f32 = HEALTHPACK_THICK
+
+		// Soft green glow for visibility against busy backgrounds.
+		glow := rl.Color{120, 255, 140, 80}
+		rl.DrawCircleV(h.pos, arm * 1.6, glow)
+
+		// White backing cross for outline.
+		back_arm: f32 = arm + 1
+		back_thick: f32 = thick + 2
+		rl.DrawRectangleRec(
+			rl.Rectangle{h.pos.x - back_arm, h.pos.y - back_thick * 0.5, back_arm * 2, back_thick},
+			rl.WHITE,
+		)
+		rl.DrawRectangleRec(
+			rl.Rectangle{h.pos.x - back_thick * 0.5, h.pos.y - back_arm, back_thick, back_arm * 2},
+			rl.WHITE,
+		)
+
+		// Inner green cross.
+		green := rl.Color{60, 220, 90, 255}
+		rl.DrawRectangleRec(
+			rl.Rectangle{h.pos.x - arm, h.pos.y - thick * 0.5, arm * 2, thick},
+			green,
+		)
+		rl.DrawRectangleRec(
+			rl.Rectangle{h.pos.x - thick * 0.5, h.pos.y - arm, thick, arm * 2},
+			green,
+		)
+	}
+}
+
+// #endregion
+
+// #region Mission II: Find Morgan's Hideout
+
+// Level 2 pacing state machine.
+//
+//   Wave1_WG_Only         weird-guy wave, no minor enemies
+//   Between_1Cyclops      1 cyclops, no weirdguys
+//   Between_1Cyc_2Sneaks  1 cyclops + 2 sneaks
+//   Wave2_WG_Sneaks       weirdguys + kill-driven sneak drops (no cyclops)
+//   Between_4Sneaks       4 sneaks, nothing else
+//   Between_3Cyc_Sneaks   3 cyclops sequentially while sneaks stream
+//   Free_For_All          original level-2 mix; loops indefinitely
+//
+// Each "between" beat exists to give the player a clearer breather/setpiece
+// after a wave instead of the prior wall-to-wall weirdguy spam. The Free_For_All
+// terminal phase preserves the original endless-wave behavior so runs don't
+// just stop after the scripted sequence.
+
+Level2_Phase :: enum {
+	Wave1_WG_Only,
+	Between_1Cyclops,
+	Between_1Cyc_2Sneaks,
+	Wave2_WG_Sneaks,
+	Between_4Sneaks,
+	Between_3Cyc_Sneaks,
+	Free_For_All,
+}
+
+reset_level2_pacing :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) {
+	enemies.level2_phase = .Wave1_WG_Only
+	enemies.level2_phase_started = false
+	enemies.level2_cyc_killed = 0
+	enemies.level2_prev_cyc_alive = 0
+	enemies.level2_sneak_timer = 0
+	enemies.level2_waves_complete = 0
+	sneaks.level2_phase = enemies.level2_phase
+}
+
+update_level2_pacing :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool, dt: f32) {
+	if enemies.level != 2 {
+		return
+	}
+
+	if !enemies.level2_phase_started {
+		on_enter_phase(enemies, sneaks)
+		enemies.level2_phase_started = true
+	}
+
+	tick_phase(enemies, sneaks, dt)
+
+	if phase_complete(enemies, sneaks) {
+		advance_phase(enemies, sneaks)
+	}
+}
+
+@(private = "file")
+on_enter_phase :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) {
+	switch enemies.level2_phase {
+	case .Wave1_WG_Only:
+		spawn_weirdguys_for_phase(enemies)
+	case .Between_1Cyclops:
+		force_spawn_cyclops(sneaks)
+	case .Between_1Cyc_2Sneaks:
+		force_spawn_cyclops(sneaks)
+		for i in 0 ..< LEVEL2_BETWEEN_1CYC2SN_SNEAK_COUNT {
+			_ = i
+			force_spawn_sneak(sneaks)
+		}
+	case .Wave2_WG_Sneaks:
+		spawn_weirdguys_for_phase(enemies)
+	case .Between_4Sneaks:
+		for i in 0 ..< LEVEL2_BETWEEN_4SNEAKS_COUNT {
+			_ = i
+			force_spawn_sneak(sneaks)
+		}
+	case .Between_3Cyc_Sneaks:
+		// Reset the kill counter for this gauntlet, then spawn the first cyclops.
+		// Subsequent cyclops are minted in tick_phase as the previous one dies.
+		enemies.level2_cyc_killed = 0
+		enemies.level2_prev_cyc_alive = 0
+		enemies.level2_sneak_timer = LEVEL2_BETWEEN_3CYC_SNEAK_INTERVAL
+		force_spawn_cyclops(sneaks)
+	case .Free_For_All:
+		// Endless: spawn the first weirdguy wave; subsequent waves come from the
+		// "no weirdguys alive → respawn" rule below in tick_phase.
+		spawn_weirdguys_for_phase(enemies)
+	}
+}
+
+@(private = "file")
+tick_phase :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool, dt: f32) {
+	#partial switch enemies.level2_phase {
+	case .Between_3Cyc_Sneaks:
+		// Detect cyclops-just-died edge to mint the next cyclops up to the target.
+		cur := count_cyclops_alive(sneaks)
+		if enemies.level2_prev_cyc_alive > 0 && cur == 0 {
+			enemies.level2_cyc_killed += 1
+			if enemies.level2_cyc_killed < LEVEL2_BETWEEN_3CYC_TARGET {
+				force_spawn_cyclops(sneaks)
+			}
+		}
+		enemies.level2_prev_cyc_alive = count_cyclops_alive(sneaks)
+
+		enemies.level2_sneak_timer -= dt
+		if enemies.level2_sneak_timer <= 0 {
+			enemies.level2_sneak_timer = LEVEL2_BETWEEN_3CYC_SNEAK_INTERVAL
+			force_spawn_sneak(sneaks)
+		}
+	case .Free_For_All:
+		// Endless weirdguy waves: respawn whenever the field is clear.
+		if !any_weirdguy_alive(enemies) {
+			spawn_weirdguys_for_phase(enemies)
+		}
+	}
+}
+
+@(private = "file")
+phase_complete :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) -> bool {
+	switch enemies.level2_phase {
+	case .Wave1_WG_Only:
+		return !any_weirdguy_alive(enemies)
+	case .Between_1Cyclops:
+		return count_cyclops_alive(sneaks) == 0
+	case .Between_1Cyc_2Sneaks:
+		return count_cyclops_alive(sneaks) == 0 && count_sneaks_alive(sneaks) == 0
+	case .Wave2_WG_Sneaks:
+		// Wave clears when all weirdguys are gone; trailing sneaks carry over
+		// into the breather rather than blocking the transition.
+		return !any_weirdguy_alive(enemies)
+	case .Between_4Sneaks:
+		return count_sneaks_alive(sneaks) == 0 && count_cyclops_alive(sneaks) == 0
+	case .Between_3Cyc_Sneaks:
+		return enemies.level2_cyc_killed >= LEVEL2_BETWEEN_3CYC_TARGET &&
+			count_cyclops_alive(sneaks) == 0
+	case .Free_For_All:
+		return false
+	}
+	return false
+}
+
+@(private = "file")
+advance_phase :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) {
+	next: Level2_Phase
+	switch enemies.level2_phase {
+	case .Wave1_WG_Only:
+		next = .Between_1Cyclops
+	case .Between_1Cyclops:
+		next = .Between_1Cyc_2Sneaks
+	case .Between_1Cyc_2Sneaks:
+		next = .Wave2_WG_Sneaks
+	case .Wave2_WG_Sneaks:
+		next = .Between_4Sneaks
+	case .Between_4Sneaks:
+		next = .Between_3Cyc_Sneaks
+	case .Between_3Cyc_Sneaks:
+		next = .Free_For_All
+	case .Free_For_All:
+		next = .Free_For_All
+	}
+	enemies.level2_phase = next
+	enemies.level2_phase_started = false
+	enemies.level2_waves_complete += 1
+	sneaks.level2_phase = next
+}
+
+@(private = "file")
+count_cyclops_alive :: proc(sneaks: ^Sneak_Pool) -> int {
+	n := 0
+	for i in 0 ..< SNEAK_MAX {
+		s := &sneaks.sneaks[i]
+		if s.active && s.kind == .Cyclops {
+			n += 1
+		}
+	}
+	return n
+}
+
+@(private = "file")
+count_sneaks_alive :: proc(sneaks: ^Sneak_Pool) -> int {
+	n := 0
+	for i in 0 ..< SNEAK_MAX {
+		s := &sneaks.sneaks[i]
+		if s.active && s.kind == .Sneak {
+			n += 1
+		}
+	}
+	return n
+}
+
+// #endregion
+
+// #region Mission IV: Flank the Enemy Space Station
+
+// Level 4 pacing state machine.
+//
+//   Wave1_Grunts   level-1 grunt wave (faster fire interval — see LEVEL4_GRUNT_FIRE_INTERVAL)
+//   Wave2_WG       level-2 weirdguy wave
+//   Wave3_Grunts   level-1 grunt wave (faster fire)
+//   Wave4_Pillars  finale: 4 corner pillars with the kill-order puzzle (see pillar.odin)
+//
+// Each phase advances when its wave is fully cleared. After Wave4_Pillars
+// clears, level4_waves_complete reaches LEVEL4_WAVES_TO_VICTORY and main.odin
+// triggers the victory screen.
+
+Level4_Phase :: enum {
+	Wave1_Grunts,
+	Wave2_WG,
+	Wave3_Grunts,
+	Wave4_Pillars,
+}
+
+reset_level4_pacing :: proc(enemies: ^Enemy_Pool) {
+	enemies.level4_phase = .Wave1_Grunts
+	enemies.level4_phase_started = false
+	enemies.level4_waves_complete = 0
+	enemies.fire_interval = LEVEL4_GRUNT_FIRE_INTERVAL
+}
+
+update_level4_pacing :: proc(enemies: ^Enemy_Pool, pillars: ^Pillar_Wave, dt: f32) {
+	if enemies.level != 4 {
+		return
+	}
+
+	if !enemies.level4_phase_started {
+		on_enter_phase_l4(enemies, pillars)
+		enemies.level4_phase_started = true
+	}
+
+	if phase_complete_l4(enemies, pillars) {
+		advance_phase_l4(enemies)
+	}
+}
+
+@(private = "file")
+on_enter_phase_l4 :: proc(enemies: ^Enemy_Pool, pillars: ^Pillar_Wave) {
+	switch enemies.level4_phase {
+	case .Wave1_Grunts, .Wave3_Grunts:
+		spawn_grunts_for_phase(enemies)
+	case .Wave2_WG:
+		spawn_weirdguys_for_phase(enemies)
+	case .Wave4_Pillars:
+		spawn_pillar_wave(pillars)
+	}
+}
+
+@(private = "file")
+phase_complete_l4 :: proc(enemies: ^Enemy_Pool, pillars: ^Pillar_Wave) -> bool {
+	switch enemies.level4_phase {
+	case .Wave1_Grunts, .Wave3_Grunts:
+		return !any_grunt_alive(enemies)
+	case .Wave2_WG:
+		return !any_weirdguy_alive(enemies)
+	case .Wave4_Pillars:
+		return pillar_wave_complete(pillars)
+	}
+	return false
+}
+
+@(private = "file")
+advance_phase_l4 :: proc(enemies: ^Enemy_Pool) {
+	next: Level4_Phase
+	switch enemies.level4_phase {
+	case .Wave1_Grunts:
+		next = .Wave2_WG
+	case .Wave2_WG:
+		next = .Wave3_Grunts
+	case .Wave3_Grunts:
+		next = .Wave4_Pillars
+	case .Wave4_Pillars:
+		// Terminal phase loops to itself; main.odin watches level4_waves_complete
+		// and triggers victory before update_level4_pacing runs again.
+		next = .Wave4_Pillars
+	}
+	enemies.level4_phase = next
+	enemies.level4_phase_started = false
+	enemies.level4_waves_complete += 1
+}
+
+// #endregion
+
+// #region Pausing and Menus
+
+// Top-level menu shown before any gameplay starts (and again after the player
+// quits from pause). Uses the level-1 parallax as a live backdrop so the menu
+// doesn't feel static. Options/Controls sub-screens reuse the same widgets as
+// the pause menu via the shared draw_pause_options / draw_pause_controls procs.
+
+Main_Menu_Screen :: enum {
+	Main,
+	Options,
+	Controls,
+}
+
+Main_Menu :: struct {
+	screen: Main_Menu_Screen,
+	cursor: int,
+}
+
+reset_main_menu :: proc(mm: ^Main_Menu) {
+	mm.screen = .Main
+	mm.cursor = 0
+}
+
+// Returns true when the player picked "BEGIN", which the caller turns into a
+// fresh-game start. "QUIT" is signaled via quit_app^ for desktop only.
+update_main_menu :: proc(
+	mm: ^Main_Menu,
+	begin_game: ^bool,
+	quit_app: ^bool,
+	audio: ^Audio,
+) {
+	switch mm.screen {
+	case .Main:
+		item_count := 4
+		step := input_menu_step_y()
+		if step != 0 {
+			mm.cursor = (mm.cursor + step + item_count) % item_count
+		}
+		if input_confirm_pressed() {
+			switch mm.cursor {
+			case 0:
+				begin_game^ = true
+			case 1:
+				mm.screen = .Options
+				mm.cursor = 0
+			case 2:
+				mm.screen = .Controls
+				mm.cursor = 0
+			case 3:
+				when ODIN_OS != .JS {
+					quit_app^ = true
+				}
+			}
+		}
+
+	case .Options:
+		if input_menu_back_pressed() {
+			mm.screen = .Main
+			mm.cursor = 1
+			return
+		}
+		item_count := 3
+		step := input_menu_step_y()
+		if step != 0 {
+			mm.cursor = (mm.cursor + step + item_count) % item_count
+		}
+		h := input_menu_step_x()
+		if h != 0 {
+			switch mm.cursor {
+			case 0:
+				set_music_volume(audio, audio.music_volume + f32(h) * PAUSE_VOLUME_STEP)
+			case 1:
+				set_sfx_volume(audio, audio.sfx_volume + f32(h) * PAUSE_VOLUME_STEP)
+			}
+		}
+		if input_confirm_pressed() && mm.cursor == 2 {
+			mm.screen = .Main
+			mm.cursor = 1
+		}
+
+	case .Controls:
+		if input_menu_back_pressed() || input_confirm_pressed() {
+			mm.screen = .Main
+			mm.cursor = 2
+		}
+	}
+}
+
+draw_main_menu :: proc(mm: ^Main_Menu, audio: ^Audio) {
+	// Slight darken so text reads cleanly over the parallax stars.
+	rl.DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, rl.Color{0, 0, 0, MAIN_MENU_OVERLAY_ALPHA})
+
+	title := cstring("Zombi")
+	tw := rl.MeasureText(title, MAIN_MENU_TITLE_FONT_SIZE)
+	tx := (i32(SCREEN_WIDTH) - tw) / 2
+	rl.DrawText(title, tx + 3, MAIN_MENU_TITLE_Y + 3, MAIN_MENU_TITLE_FONT_SIZE, rl.BLACK)
+	rl.DrawText(title, tx, MAIN_MENU_TITLE_Y, MAIN_MENU_TITLE_FONT_SIZE, rl.WHITE)
+
+	switch mm.screen {
+	case .Main:
+		draw_main_menu_items(mm.cursor)
+	case .Options:
+		draw_pause_options(mm.cursor, audio)
+	case .Controls:
+		draw_pause_controls()
+	}
+}
+
+@(private = "file")
+draw_main_menu_items :: proc(cursor: int) {
+	items := [?]cstring {
+		cstring("BEGIN"),
+		cstring("OPTIONS"),
+		cstring("CONTROLS"),
+		cstring("QUIT"),
+	}
+	y: i32 = MAIN_MENU_ITEMS_TOP_Y
+	for it, i in items {
+		draw_menu_label(it, y, cursor == i)
+		y += PAUSE_ITEM_FONT_SIZE + PAUSE_ITEM_GAP
+	}
+}
+Pause_Screen :: enum {
+	Main,
+	Options,
+	Controls,
+}
+
+Pause_Menu :: struct {
+	screen: Pause_Screen,
+	cursor: int,
+}
+
+reset_pause_menu :: proc(pm: ^Pause_Menu) {
+	pm.screen = .Main
+	pm.cursor = 0
+}
+
+update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio: ^Audio) {
+	switch pm.screen {
+	case .Main:
+		// Toggle takes priority on Main so ESC / Start closes the menu.
+		if input_pause_toggle_pressed() {
+			paused^ = false
+			return
+		}
+		item_count := 4
+		step := input_menu_step_y()
+		if step != 0 {
+			pm.cursor = (pm.cursor + step + item_count) % item_count
+		}
+		if input_confirm_pressed() {
+			switch pm.cursor {
+			case 0:
+				paused^ = false
+			case 1:
+				pm.screen = .Options
+				pm.cursor = 0
+			case 2:
+				pm.screen = .Controls
+				pm.cursor = 0
+			case 3:
+				quit_to_menu^ = true
+				paused^ = false
+			}
+		}
+
+	case .Options:
+		// On submenus ESC / B steps back to Main rather than unpausing,
+		// so check back before toggle.
+		if input_menu_back_pressed() {
+			pm.screen = .Main
+			pm.cursor = 1
+			return
+		}
+		item_count := 3
+		step := input_menu_step_y()
+		if step != 0 {
+			pm.cursor = (pm.cursor + step + item_count) % item_count
+		}
+		h := input_menu_step_x()
+		if h != 0 {
+			switch pm.cursor {
+			case 0:
+				set_music_volume(audio, audio.music_volume + f32(h) * PAUSE_VOLUME_STEP)
+			case 1:
+				set_sfx_volume(audio, audio.sfx_volume + f32(h) * PAUSE_VOLUME_STEP)
+			}
+		}
+		if input_confirm_pressed() && pm.cursor == 2 {
+			pm.screen = .Main
+			pm.cursor = 1
+		}
+
+	case .Controls:
+		if input_menu_back_pressed() || input_confirm_pressed() {
+			pm.screen = .Main
+			pm.cursor = 2
+		}
+	}
+}
+
+draw_pause :: proc(pm: ^Pause_Menu, audio: ^Audio) {
+	rl.DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, rl.Color{0, 0, 0, PAUSE_OVERLAY_ALPHA})
+
+	title := cstring("PAUSED")
+	tw := rl.MeasureText(title, PAUSE_TITLE_FONT_SIZE)
+	tx := (i32(SCREEN_WIDTH) - tw) / 2
+	rl.DrawText(title, tx + 2, PAUSE_TITLE_Y + 2, PAUSE_TITLE_FONT_SIZE, rl.BLACK)
+	rl.DrawText(title, tx, PAUSE_TITLE_Y, PAUSE_TITLE_FONT_SIZE, rl.WHITE)
+
+	switch pm.screen {
+	case .Main:
+		draw_pause_main(pm.cursor)
+	case .Options:
+		draw_pause_options(pm.cursor, audio)
+	case .Controls:
+		draw_pause_controls()
+	}
+}
+
+@(private = "file")
+draw_pause_main :: proc(cursor: int) {
+	items := [?]cstring{cstring("RESUME"), cstring("OPTIONS"), cstring("CONTROLS"), cstring("QUIT")}
+	y: i32 = PAUSE_MENU_TOP_Y
+	for it, i in items {
+		draw_menu_label(it, y, cursor == i)
+		y += PAUSE_ITEM_FONT_SIZE + PAUSE_ITEM_GAP
+	}
+}
+
+draw_pause_options :: proc(cursor: int, audio: ^Audio) {
+	row_h: i32 = PAUSE_ITEM_FONT_SIZE + PAUSE_SLIDER_H + 10
+	y: i32 = PAUSE_MENU_TOP_Y
+	draw_menu_slider(cstring("MUSIC"), audio.music_volume, y, cursor == 0)
+	y += row_h + PAUSE_ITEM_GAP
+	draw_menu_slider(cstring("SFX"), audio.sfx_volume, y, cursor == 1)
+	y += row_h + PAUSE_ITEM_GAP
+	draw_menu_label(cstring("BACK"), y, cursor == 2)
+}
+
+draw_pause_controls :: proc() {
+	on_gamepad := input_last_device() == .Gamepad
+
+	header: cstring = cstring("CONTROLS - KEYBOARD")
+	if on_gamepad {
+		header = cstring("CONTROLS - GAMEPAD")
+	}
+	hw := rl.MeasureText(header, PAUSE_ITEM_FONT_SIZE)
+	hx := (i32(SCREEN_WIDTH) - hw) / 2
+	hy: i32 = PAUSE_MENU_TOP_Y - 30
+	rl.DrawText(header, hx + 1, hy + 1, PAUSE_ITEM_FONT_SIZE, rl.BLACK)
+	rl.DrawText(header, hx, hy, PAUSE_ITEM_FONT_SIZE, rl.YELLOW)
+
+	y := hy + PAUSE_ITEM_FONT_SIZE + 10
+	draw_control_row(cstring("MOVE"), .Move, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("ATTACK"), .Attack, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("DASH"), .Dash, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("SLOW TIME"), .Slow_Time, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("SHRINK BOMB"), .Shrink_Bomb, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("PAUSE"), .Pause, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("CONFIRM"), .Confirm, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("BACK"), .Back, y)
+
+	draw_return_hint()
+}
+
+// "[icon] RETURN" centered along the bottom of the controls screen.
+draw_return_hint :: proc() {
+	tail := cstring("RETURN")
+	icon_w := input_hint_width(.Confirm, HINT_ICON_SIZE)
+	tail_w := rl.MeasureText(tail, PAUSE_BODY_FONT_SIZE)
+	total_w := icon_w + HINT_TEXT_GAP + tail_w
+	x := (i32(SCREEN_WIDTH) - total_w) / 2
+	y: i32 = SCREEN_HEIGHT - 22
+	icon_y := y + (PAUSE_BODY_FONT_SIZE - HINT_ICON_SIZE) / 2
+	draw_input_hint(.Confirm, x, icon_y, HINT_ICON_SIZE)
+	rl.DrawText(tail, x + icon_w + HINT_TEXT_GAP, y, PAUSE_BODY_FONT_SIZE, rl.WHITE)
+}
+
+// Body rows are taller than the font now so icons fit; the label sits centered
+// vertically inside the row's icon-height band.
+draw_control_row :: proc(label: cstring, kind: Input_Hint, y: i32) {
+	label_x: i32 = SCREEN_WIDTH / 2 - 110
+	icon_x: i32 = SCREEN_WIDTH / 2 + 10
+	label_y := y + (HINT_ICON_SIZE - PAUSE_BODY_FONT_SIZE) / 2
+	rl.DrawText(label, label_x, label_y, PAUSE_BODY_FONT_SIZE, rl.WHITE)
+	draw_input_hint(kind, icon_x, y, HINT_ICON_SIZE)
+}
+
+draw_menu_label :: proc(text: cstring, y: i32, selected: bool) {
+	color := rl.Color{180, 180, 180, 255}
+	if selected {
+		color = rl.WHITE
+	}
+	w := rl.MeasureText(text, PAUSE_ITEM_FONT_SIZE)
+	x := (i32(SCREEN_WIDTH) - w) / 2
+	rl.DrawText(text, x + 1, y + 1, PAUSE_ITEM_FONT_SIZE, rl.BLACK)
+	rl.DrawText(text, x, y, PAUSE_ITEM_FONT_SIZE, color)
+	if selected {
+		rl.DrawText(cstring(">"), x - 14, y, PAUSE_ITEM_FONT_SIZE, rl.YELLOW)
+		rl.DrawText(cstring("<"), x + w + 6, y, PAUSE_ITEM_FONT_SIZE, rl.YELLOW)
+	}
+}
+
+draw_menu_slider :: proc(label: cstring, value: f32, y: i32, selected: bool) {
+	color := rl.Color{180, 180, 180, 255}
+	if selected {
+		color = rl.WHITE
+	}
+	pct := fmt.ctprintf("%d%%", int(value * 100 + 0.5))
+	label_w := rl.MeasureText(label, PAUSE_ITEM_FONT_SIZE)
+	pct_w := rl.MeasureText(pct, PAUSE_ITEM_FONT_SIZE)
+	spacing: i32 = 16
+	total_w := label_w + spacing + pct_w
+	label_x := (i32(SCREEN_WIDTH) - total_w) / 2
+	pct_x := label_x + label_w + spacing
+	rl.DrawText(label, label_x + 1, y + 1, PAUSE_ITEM_FONT_SIZE, rl.BLACK)
+	rl.DrawText(label, label_x, y, PAUSE_ITEM_FONT_SIZE, color)
+	rl.DrawText(pct, pct_x + 1, y + 1, PAUSE_ITEM_FONT_SIZE, rl.BLACK)
+	rl.DrawText(pct, pct_x, y, PAUSE_ITEM_FONT_SIZE, color)
+
+	bar_w: i32 = PAUSE_SLIDER_W
+	bar_h: i32 = PAUSE_SLIDER_H
+	bar_x := (i32(SCREEN_WIDTH) - bar_w) / 2
+	bar_y := y + PAUSE_ITEM_FONT_SIZE + 4
+	rl.DrawRectangle(bar_x, bar_y, bar_w, bar_h, rl.Color{40, 40, 60, 255})
+	fill_w := i32(f32(bar_w) * value + 0.5)
+	fill_color := rl.Color{120, 120, 160, 255}
+	if selected {
+		fill_color = rl.Color{80, 180, 255, 255}
+	}
+	rl.DrawRectangle(bar_x, bar_y, fill_w, bar_h, fill_color)
+	rl.DrawRectangleLines(bar_x, bar_y, bar_w, bar_h, rl.Color{120, 120, 140, 255})
+	if selected {
+		rl.DrawText(cstring("<"), bar_x - 14, bar_y - 4, PAUSE_ITEM_FONT_SIZE, rl.YELLOW)
+		rl.DrawText(cstring(">"), bar_x + bar_w + 6, bar_y - 4, PAUSE_ITEM_FONT_SIZE, rl.YELLOW)
+	}
+}
+
+// #endregion
+
+// #region Particle Handling
+Particle :: struct {
+	pos:      rl.Vector2,
+	vel:      rl.Vector2,
+	lifetime: f32,
+	max_life: f32,
+	color:    rl.Color,
+	size:     f32,
+	active:   bool,
+}
+
+Particle_Pool :: struct {
+	particles: [MAX_PARTICLES]Particle,
+}
+
+spawn_impact_particles :: proc(pool: ^Particle_Pool, pos: rl.Vector2, color: rl.Color, count: int) {
+	spawned := 0
+	for i in 0 ..< MAX_PARTICLES {
+		if spawned >= count {
+			return
+		}
+		p := &pool.particles[i]
+		if p.active {
+			continue
+		}
+		angle := rand.float32() * math.TAU
+		speed_range: f32 = PARTICLE_SPEED_MAX - PARTICLE_SPEED_MIN
+		speed := f32(PARTICLE_SPEED_MIN) + rand.float32() * speed_range
+		life_range: f32 = PARTICLE_LIFE_MAX - PARTICLE_LIFE_MIN
+		size_range: f32 = PARTICLE_SIZE_MAX - PARTICLE_SIZE_MIN
+		tinted := color
+		tinted.a = 200
+		p^ = Particle {
+			pos      = pos,
+			vel      = {math.cos(angle) * speed, math.sin(angle) * speed - 50},
+			lifetime = 0,
+			max_life = f32(PARTICLE_LIFE_MIN) + rand.float32() * life_range,
+			color    = tinted,
+			size     = f32(PARTICLE_SIZE_MIN) + rand.float32() * size_range,
+			active   = true,
+		}
+		spawned += 1
+	}
+}
+
+spawn_gather_particle :: proc(pool: ^Particle_Pool, target: rl.Vector2, color: rl.Color, charge: f32) {
+	for i in 0 ..< MAX_PARTICLES {
+		p := &pool.particles[i]
+		if p.active {
+			continue
+		}
+		angle := rand.float32() * math.TAU
+		dist := f32(CHARGE_BEAM_GATHER_DIST_MIN) + rand.float32() * f32(CHARGE_BEAM_GATHER_DIST_RANGE)
+		spawn_pos := rl.Vector2{target.x + math.cos(angle) * dist, target.y + math.sin(angle) * dist}
+		tinted := color
+		tinted.a = 200
+		p^ = Particle {
+			pos      = spawn_pos,
+			vel      = (target - spawn_pos) * 3,
+			lifetime = 0,
+			max_life = CHARGE_BEAM_GATHER_LIFE,
+			color    = tinted,
+			size     = 2 + charge * 3,
+			active   = true,
+		}
+		return
+	}
+}
+
+update_particles :: proc(pool: ^Particle_Pool, dt: f32) {
+	for i in 0 ..< MAX_PARTICLES {
+		p := &pool.particles[i]
+		if !p.active {
+			continue
+		}
+		p.pos += p.vel * dt
+		p.vel.y += PARTICLE_GRAVITY * dt
+		p.lifetime += dt
+		if p.lifetime >= p.max_life {
+			p.active = false
+		}
+	}
+}
+
+draw_particles :: proc(pool: ^Particle_Pool) {
+	for i in 0 ..< MAX_PARTICLES {
+		p := &pool.particles[i]
+		if !p.active {
+			continue
+		}
+		alpha := 1.0 - (p.lifetime / p.max_life)
+		color := p.color
+		color.a = u8(f32(p.color.a) * alpha)
+		rl.DrawCircleV(p.pos, p.size * alpha, color)
+	}
+}
+
+// #endregion
+
+// #region Dialogue
+
+
+
+Dialogue_Speaker :: enum {
+	Paprika,
+	Zombi,
+}
+
+Dialogue_Line :: struct {
+	speaker: Dialogue_Speaker,
+	text:    string,
+}
+
+Dialogue :: struct {
+	active:           bool,
+	intro_done:       bool, // level-1 hint_01 fires once per run
+	wave2_intro_done: bool, // level-1 hint_02 fires once per run, before wave 2
+	lines:            [4]Dialogue_Line,
+	line_count:       int,
+	line_idx:         int,
+	atoms_revealed:   int,
+	char_timer:       f32,
+	icon_frame:       int,
+	icon_frame_t:     f32,
+	paprika_tex:      rl.Texture2D,
+	zombi_tex:        rl.Texture2D,
+}
+
+init_dialogue :: proc(d: ^Dialogue) {
+	d.paprika_tex = rl.LoadTexture("assets/sprites/captain_paprika_dialogue_box_icon.png")
+	d.zombi_tex = rl.LoadTexture("assets/sprites/player_dialogue_box_icon.png")
+	rl.SetTextureFilter(d.paprika_tex, .POINT)
+	rl.SetTextureFilter(d.zombi_tex, .POINT)
+}
+
+unload_dialogue :: proc(d: ^Dialogue) {
+	rl.UnloadTexture(d.paprika_tex)
+	rl.UnloadTexture(d.zombi_tex)
+}
+
+start_level1_intro :: proc(d: ^Dialogue) {
+	if d.intro_done {
+		return
+	}
+	d.lines[0] = Dialogue_Line {
+		speaker = .Paprika,
+		text    = "It's quiet... Too quiet. Zombi, fire your lasers {attack} to take 'em out",
+	}
+	d.lines[1] = Dialogue_Line{speaker = .Zombi, text = "Roger that."}
+	d.line_count = 2
+	dialogue_begin(d)
+	d.intro_done = true
+}
+
+start_level1_wave2_intro :: proc(d: ^Dialogue) {
+	if d.wave2_intro_done {
+		return
+	}
+	d.lines[0] = Dialogue_Line {
+		speaker = .Zombi,
+		text    = "Grr, there's bullets everywhere!",
+	}
+	d.lines[1] = Dialogue_Line {
+		speaker = .Paprika,
+		text    = "Evade them by dashing {dash} - dash into a bullet to reflect it!",
+	}
+	d.lines[2] = Dialogue_Line {
+		speaker = .Paprika,
+		text    = "Try your special shrink ability {shrink} too!",
+	}
+	d.line_count = 3
+	dialogue_begin(d)
+	d.wave2_intro_done = true
+}
+
+@(private = "file")
+dialogue_begin :: proc(d: ^Dialogue) {
+	d.line_idx = 0
+	d.atoms_revealed = 0
+	d.char_timer = 0
+	d.icon_frame = 0
+	d.icon_frame_t = 0
+	d.active = true
+}
+
+// One atom = one byte of plain text OR one full {token}. Tokens reveal as a
+// single typewriter step rather than character-by-character.
+@(private = "file")
+line_atom_count :: proc(text: string) -> int {
+	n := 0
+	i := 0
+	for i < len(text) {
+		if text[i] == '{' {
+			for i < len(text) && text[i] != '}' {
+				i += 1
+			}
+			if i < len(text) {
+				i += 1
+			}
+			n += 1
+			continue
+		}
+		n += 1
+		i += 1
+	}
+	return n
+}
+
+update_dialogue :: proc(d: ^Dialogue, dt: f32) {
+	if !d.active {
+		return
+	}
+	if d.line_idx >= d.line_count {
+		d.active = false
+		return
+	}
+
+	d.icon_frame_t += dt
+	for d.icon_frame_t >= DIALOGUE_ICON_FRAME_DUR {
+		d.icon_frame_t -= DIALOGUE_ICON_FRAME_DUR
+		d.icon_frame = (d.icon_frame + 1) % DIALOGUE_ICON_SRC_FRAMES
+	}
+
+	line := d.lines[d.line_idx]
+	total := line_atom_count(line.text)
+
+	// Confirm: first press skips typewriter to end; second advances line.
+	if input_confirm_pressed() {
+		if d.atoms_revealed < total {
+			d.atoms_revealed = total
+			return
+		}
+		d.line_idx += 1
+		d.atoms_revealed = 0
+		d.char_timer = 0
+		if d.line_idx >= d.line_count {
+			d.active = false
+		}
+		return
+	}
+
+	if d.atoms_revealed < total {
+		d.char_timer += dt
+		for d.char_timer >= DIALOGUE_CHAR_INTERVAL && d.atoms_revealed < total {
+			d.char_timer -= DIALOGUE_CHAR_INTERVAL
+			d.atoms_revealed += 1
+		}
+	}
+}
+
+draw_dialogue :: proc(d: ^Dialogue) {
+	if !d.active || d.line_idx >= d.line_count {
+		return
+	}
+
+	box_x: i32 = (SCREEN_WIDTH - DIALOGUE_BOX_W) / 2
+	box_y: i32 = SCREEN_HEIGHT - DIALOGUE_BOX_H - DIALOGUE_BOX_BOTTOM_MARGIN
+
+	rl.DrawRectangle(box_x, box_y, DIALOGUE_BOX_W, DIALOGUE_BOX_H, rl.Color{8, 8, 14, 252})
+	rl.DrawRectangleLines(box_x, box_y, DIALOGUE_BOX_W, DIALOGUE_BOX_H, rl.Color{200, 200, 220, 255})
+
+	line := d.lines[d.line_idx]
+
+	tex: rl.Texture2D
+	name: cstring
+	accent: rl.Color
+	switch line.speaker {
+	case .Paprika:
+		tex = d.paprika_tex
+		name = "CAPTAIN PAPRIKA"
+		accent = rl.Color{255, 140, 80, 255}
+	case .Zombi:
+		tex = d.zombi_tex
+		name = "ZOMBI"
+		accent = rl.Color{120, 220, 160, 255}
+	}
+
+	icon_x: f32 = f32(box_x + DIALOGUE_BOX_PAD)
+	icon_y: f32 =
+		f32(box_y) + (f32(DIALOGUE_BOX_H) - f32(DIALOGUE_ICON_DRAW_SIZE)) * 0.5
+	src := rl.Rectangle {
+		f32(d.icon_frame * DIALOGUE_ICON_SRC_W),
+		0,
+		f32(DIALOGUE_ICON_SRC_W),
+		f32(DIALOGUE_ICON_SRC_H),
+	}
+	dst := rl.Rectangle {
+		icon_x,
+		icon_y,
+		f32(DIALOGUE_ICON_DRAW_SIZE),
+		f32(DIALOGUE_ICON_DRAW_SIZE),
+	}
+	rl.DrawTexturePro(tex, src, dst, {0, 0}, 0, rl.WHITE)
+
+	// Speaker name above the box.
+	nx: i32 = box_x + DIALOGUE_BOX_PAD
+	ny: i32 = box_y - DIALOGUE_NAME_FONT_SIZE - 3
+	rl.DrawText(name, nx + 1, ny + 1, DIALOGUE_NAME_FONT_SIZE, rl.BLACK)
+	rl.DrawText(name, nx, ny, DIALOGUE_NAME_FONT_SIZE, accent)
+
+	text_x0: i32 =
+		box_x + DIALOGUE_BOX_PAD + DIALOGUE_ICON_DRAW_SIZE + DIALOGUE_BOX_PAD
+	text_y0: i32 = box_y + DIALOGUE_BOX_PAD
+	text_w: i32 = DIALOGUE_BOX_W - (text_x0 - box_x) - DIALOGUE_BOX_PAD
+	line_h: i32 = DIALOGUE_TEXT_FONT_SIZE + DIALOGUE_TEXT_LINE_GAP
+
+	draw_dialogue_text(line.text, d.atoms_revealed, text_x0, text_y0, text_w, line_h)
+}
+
+@(private = "file")
+token_to_hint :: proc(token: string) -> (Input_Hint, bool) {
+	switch token {
+	case "attack":
+		return .Attack, true
+	case "dash":
+		return .Dash, true
+	case "shrink":
+		return .Shrink_Bomb, true
+	case "slow":
+		return .Slow_Time, true
+	case "confirm":
+		return .Confirm, true
+	}
+	return .Attack, false
+}
+
+@(private = "file")
+draw_dialogue_text :: proc(text: string, atoms_revealed: int, x0, y0, w, line_h: i32) {
+	font_size: i32 = DIALOGUE_TEXT_FONT_SIZE
+	cur_x := x0
+	cur_y := y0
+	drawn := 0
+	space_w := rl.MeasureText(" ", font_size)
+
+	i := 0
+	for i < len(text) {
+		if drawn >= atoms_revealed {
+			break
+		}
+
+		ch := text[i]
+
+		if ch == '{' {
+			rel_close := strings.index_byte(text[i:], '}')
+			if rel_close >= 0 {
+				token := text[i + 1:i + rel_close]
+				hint, _ := token_to_hint(token)
+				token_w := input_hint_width(hint, DIALOGUE_INLINE_HINT_SIZE)
+				if cur_x + token_w > x0 + w {
+					cur_x = x0
+					cur_y += line_h
+				}
+				icon_y := cur_y + (font_size - DIALOGUE_INLINE_HINT_SIZE) / 2
+				_ = draw_input_hint(hint, cur_x, icon_y, DIALOGUE_INLINE_HINT_SIZE)
+				cur_x += token_w
+				i += rel_close + 1
+				drawn += 1
+				continue
+			}
+		}
+
+		// Word-wrap at spaces: peek to the next break and wrap if the upcoming
+		// word would overflow.
+		if ch == ' ' {
+			j := i + 1
+			for j < len(text) && text[j] != ' ' && text[j] != '{' {
+				j += 1
+			}
+			word := text[i + 1:j]
+			cword := strings.clone_to_cstring(word, context.temp_allocator)
+			word_w := rl.MeasureText(cword, font_size)
+			if cur_x + space_w + word_w > x0 + w {
+				cur_x = x0
+				cur_y += line_h
+				drawn += 1
+				i += 1
+				continue
+			}
+		}
+
+		buf := make([]u8, 2, context.temp_allocator)
+		buf[0] = ch
+		buf[1] = 0
+		cstr := cstring(raw_data(buf))
+		// Drop shadow keeps text readable against bright parallax backgrounds.
+		rl.DrawText(cstr, cur_x + 1, cur_y + 1, font_size, rl.BLACK)
+		rl.DrawText(cstr, cur_x, cur_y, font_size, rl.WHITE)
+		cur_x += rl.MeasureText(cstr, font_size)
+		i += 1
+		drawn += 1
+	}
+
+	// Continue prompt once the current line is fully revealed.
+	total := line_atom_count(text)
+	if atoms_revealed >= total {
+		blink := int(rl.GetTime() * 2) % 2 == 0
+		if blink {
+			tri_x := x0 + w - 8
+			tri_y := y0 + line_h * 2 + 2
+			rl.DrawTriangle(
+				{f32(tri_x), f32(tri_y)},
+				{f32(tri_x + 6), f32(tri_y)},
+				{f32(tri_x + 3), f32(tri_y + 5)},
+				rl.Color{220, 220, 220, 255},
+			)
+		}
+	}
+}
+
+// #endregion
