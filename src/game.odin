@@ -202,7 +202,7 @@ set_background_level :: proc(bg: ^Background, level: int) {
 		bg.textures[i] = {}
 		bg.offsets[i] = 0
 	}
-	bg.shader_mode = level == 3
+	bg.shader_mode = level == 3 || level == 5
 	bg.seconds = 0
 	load_bg_textures(bg, level)
 }
@@ -212,7 +212,9 @@ bg_path :: proc(level: int, i: int) -> cstring {
 	if level <= 1 {
 		return fmt.ctprintf("assets/parallaxbg%d.png", i)
 	}
-	if level == 3 {
+	if level == 3 || level == 5 {
+		// Level 5 reuses the Morgan backdrop + wave shader for the Ancient
+		// Guardian fight. Different image, same effect.
 		return "assets/level3_bg.png"
 	}
 	// Level 4 reuses the level-2 parallax stack for now.

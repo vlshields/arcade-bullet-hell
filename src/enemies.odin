@@ -21,6 +21,7 @@ WeirdGuy_Data :: struct {
 	patrol_min_x: f32,
 	patrol_max_x: f32,
 	dir:          f32,
+	entering:     bool,
 }
 
 Enemy :: struct {
@@ -160,8 +161,15 @@ spawn_weirdguy_wave :: proc(pool: ^Enemy_Pool) {
 	for i in 0 ..< WEIRDGUY_WAVE_COUNT {
 		center_x := min_center + rand.float32() * (max_center - min_center)
 		y := WEIRDGUY_Y_MIN + rand.float32() * (WEIRDGUY_Y_MAX - WEIRDGUY_Y_MIN)
-		dir: f32 = rand.float32() < 0.5 ? 1.0 : -1.0
-		start_x := center_x + (rand.float32() * 2 - 1) * half
+		dir: f32
+		start_x: f32
+		if rand.float32() < 0.5 {
+			dir = 1
+			start_x = -margin - 1
+		} else {
+			dir = -1
+			start_x = f32(SCREEN_WIDTH) + margin + 1
+		}
 		pool.enemies[i] = Enemy {
 			kind = .WeirdGuy,
 			pos = {start_x, y},
@@ -175,6 +183,7 @@ spawn_weirdguy_wave :: proc(pool: ^Enemy_Pool) {
 				patrol_min_x = center_x - half,
 				patrol_max_x = center_x + half,
 				dir = dir,
+				entering = true,
 			},
 		}
 	}
@@ -314,6 +323,22 @@ update_weirdguy_one :: proc(
 	dt: f32,
 ) {
 	d := &e.data.(WeirdGuy_Data)
+
+	if d.entering {
+		e.pos.x += d.dir * WEIRDGUY_SPEED * dt
+		if d.dir > 0 {
+			if e.pos.x >= d.patrol_min_x {
+				e.pos.x = d.patrol_min_x
+				d.entering = false
+			}
+		} else {
+			if e.pos.x <= d.patrol_max_x {
+				e.pos.x = d.patrol_max_x
+				d.entering = false
+			}
+		}
+		return
+	}
 
 	e.pos.x += d.dir * WEIRDGUY_SPEED * dt
 	if e.pos.x <= d.patrol_min_x {
@@ -1207,6 +1232,22 @@ draw_pillars :: proc(wave: ^Pillar_Wave) {
 Boss_Kind :: enum {
 	Golgatha,
 	Morgan,
+	Ancient_Guardian,
+}
+
+// One of GUARDIAN_ORB_COUNT orbs orbiting the Ancient Guardian. Position is
+// recomputed each frame from the boss center + shared orbit_phase + this orb's
+// fixed angle_offset. Only the orb at boss.vulnerable_orb_idx takes damage;
+// shots against any other orb are absorbed (blocked particles, no hp loss).
+Guardian_Orb :: struct {
+	angle_offset: f32,
+	pos:          rl.Vector2,
+	spiral_angle: f32,
+	spin_dir:     f32,
+	fire_timer:   f32,
+	hp:           int,
+	hit_flash:    f32,
+	active:       bool,
 }
 
 Boss :: struct {
@@ -1235,6 +1276,17 @@ Boss :: struct {
 	// phases. > 0 means the world is frozen and the HP bar is refilling 0 ->
 	// MORGAN_PHASE_HP. Defeat does NOT trigger a transition.
 	phase_transition_t: f32,
+	// Ancient Guardian state. orbs orbit the boss at orbit_phase rad; only
+	// vulnerable_orb_idx takes damage. While any orb is active the boss itself
+	// is invulnerable. When all 6 orbs die, in_window flips true for
+	// GUARDIAN_WINDOW_DURATION seconds; when the timer expires (or all orbs
+	// would otherwise be down), orbs respawn and the cycle restarts.
+	orbs:                [GUARDIAN_ORB_COUNT]Guardian_Orb,
+	orbit_phase:         f32,
+	vulnerable_orb_idx:  int,
+	vulnerable_timer:    f32,
+	window_timer:        f32,
+	in_window:           bool,
 }
 
 // True while Morgan is between phases. Main loop uses this to freeze the
@@ -1248,6 +1300,7 @@ Boss_Pool :: struct {
 	boss:            Boss,
 	tex:             rl.Texture2D,
 	morgan_idle_tex: rl.Texture2D,
+	guardian_tex:    rl.Texture2D,
 	flash_shader:    rl.Shader,
 }
 
@@ -1256,6 +1309,8 @@ init_boss :: proc(pool: ^Boss_Pool) {
 	rl.SetTextureFilter(pool.tex, .POINT)
 	pool.morgan_idle_tex = rl.LoadTexture("assets/sprites/boss_morgan_idle.png")
 	rl.SetTextureFilter(pool.morgan_idle_tex, .POINT)
+	pool.guardian_tex = rl.LoadTexture("assets/sprites/final_boss_ancient_guardian.png")
+	rl.SetTextureFilter(pool.guardian_tex, .POINT)
 	pool.flash_shader = load_flash_shader()
 	pool.boss.active = false
 }
@@ -1263,6 +1318,7 @@ init_boss :: proc(pool: ^Boss_Pool) {
 unload_boss :: proc(pool: ^Boss_Pool) {
 	rl.UnloadTexture(pool.tex)
 	rl.UnloadTexture(pool.morgan_idle_tex)
+	rl.UnloadTexture(pool.guardian_tex)
 	rl.UnloadShader(pool.flash_shader)
 }
 
@@ -1270,7 +1326,23 @@ boss_hit_radius :: proc(b: ^Boss) -> f32 {
 	if b.kind == .Morgan {
 		return MORGAN_HIT_RADIUS
 	}
+	if b.kind == .Ancient_Guardian {
+		return GUARDIAN_HIT_RADIUS
+	}
 	return BOSS_HIT_RADIUS
+}
+
+// True only when the player's projectiles can land hp on the boss body.
+// Ancient Guardian is invulnerable until all six orbs are down and the 12s
+// damage window is open; everyone else is always damageable while alive.
+boss_can_take_damage :: proc(b: ^Boss) -> bool {
+	if !b.active {
+		return false
+	}
+	if b.kind == .Ancient_Guardian {
+		return b.in_window
+	}
+	return true
 }
 
 spawn_boss :: proc(pool: ^Boss_Pool) {
@@ -1300,12 +1372,144 @@ spawn_morgan :: proc(pool: ^Boss_Pool) {
 	}
 }
 
+spawn_ancient_guardian :: proc(pool: ^Boss_Pool) {
+	pool.boss = Boss {
+		pos                = {GUARDIAN_SPAWN_X, GUARDIAN_SPAWN_Y},
+		hp                 = GUARDIAN_TOTAL_HP,
+		active             = true,
+		kind               = .Ancient_Guardian,
+		vulnerable_orb_idx = -1,
+	}
+	spawn_guardian_orbs(&pool.boss)
+}
+
+// Resets all six orbs to full hp and re-randomizes which one is vulnerable.
+// Called both on initial spawn and on each respawn at the end of the damage
+// window. Spin direction alternates so the screen reads as opposing spirals
+// rather than one synchronized swirl.
+spawn_guardian_orbs :: proc(b: ^Boss) {
+	for i in 0 ..< GUARDIAN_ORB_COUNT {
+		spin: f32 = 1
+		if i % 2 == 1 {
+			spin = -1
+		}
+		b.orbs[i] = Guardian_Orb {
+			angle_offset = f32(i) * math.TAU / f32(GUARDIAN_ORB_COUNT),
+			spiral_angle = rand.float32() * math.TAU,
+			spin_dir     = spin,
+			fire_timer   = rand.float32() * GUARDIAN_ORB_FIRE_INTERVAL,
+			hp           = GUARDIAN_ORB_HP,
+			active       = true,
+		}
+	}
+	b.in_window = false
+	b.window_timer = 0
+	b.vulnerable_orb_idx = pick_random_alive_orb(b, -1)
+	b.vulnerable_timer = GUARDIAN_ORB_VULNERABLE_TIME
+}
+
+// Picks a random active orb other than `avoid`. Returns -1 if none are alive.
+// Used to seed the initial vulnerable orb (avoid = -1) and to rotate the
+// vulnerability without picking the same one back-to-back.
+@(private = "file")
+pick_random_alive_orb :: proc(b: ^Boss, avoid: int) -> int {
+	candidates: [GUARDIAN_ORB_COUNT]int
+	n := 0
+	for i in 0 ..< GUARDIAN_ORB_COUNT {
+		if !b.orbs[i].active {
+			continue
+		}
+		if i == avoid {
+			continue
+		}
+		candidates[n] = i
+		n += 1
+	}
+	if n == 0 {
+		// All other orbs are dead; fall back to the only one alive (which may
+		// be `avoid`) so the player still has a target.
+		for i in 0 ..< GUARDIAN_ORB_COUNT {
+			if b.orbs[i].active {
+				return i
+			}
+		}
+		return -1
+	}
+	return candidates[int(rand.uint32() % u32(n))]
+}
+
+guardian_orbs_alive :: proc(b: ^Boss) -> int {
+	n := 0
+	for i in 0 ..< GUARDIAN_ORB_COUNT {
+		if b.orbs[i].active {
+			n += 1
+		}
+	}
+	return n
+}
+
+// Damages the orb at `idx` if it is the currently-vulnerable one. Returns
+// (applied, killed) the same way damage_pillar does so callers can pick
+// between impact particles and the "bullet absorbed but no damage" feedback.
+damage_guardian_orb :: proc(b: ^Boss, idx: int, amount: int) -> (applied: bool, killed: bool) {
+	if b.kind != .Ancient_Guardian {
+		return false, false
+	}
+	if idx < 0 || idx >= GUARDIAN_ORB_COUNT {
+		return false, false
+	}
+	o := &b.orbs[idx]
+	if !o.active {
+		return false, false
+	}
+	if b.vulnerable_orb_idx != idx {
+		return false, false
+	}
+	o.hp -= amount
+	o.hit_flash = GUARDIAN_HIT_FLASH_TIME
+	if o.hp <= 0 {
+		o.hp = 0
+		o.active = false
+		// Pick a new vulnerable orb among the remaining; if none are alive
+		// flip into the damage window. The window timer drives both the boss
+		// damageable state and the orb respawn at its expiry.
+		alive := guardian_orbs_alive(b)
+		if alive == 0 {
+			b.vulnerable_orb_idx = -1
+			b.in_window = true
+			b.window_timer = GUARDIAN_WINDOW_DURATION
+		} else {
+			b.vulnerable_orb_idx = pick_random_alive_orb(b, idx)
+			b.vulnerable_timer = GUARDIAN_ORB_VULNERABLE_TIME
+		}
+		return true, true
+	}
+	return true, false
+}
+
 boss_center :: proc(b: ^Boss) -> rl.Vector2 {
 	return b.pos
 }
 
 damage_boss :: proc(b: ^Boss, amount: int) -> (killed: bool) {
 	if !b.active {
+		return false
+	}
+	if b.kind == .Ancient_Guardian {
+		// Body soaks damage only inside the 12s window. While orbs are active
+		// the body doesn't even flash so the player has a clear "can't hurt me
+		// yet" read; orbs flash on their own when shot.
+		if !b.in_window {
+			return false
+		}
+		b.hit_flash = BOSS_HIT_FLASH_TIME
+		b.hp -= amount
+		if b.hp <= 0 {
+			b.hp = 0
+			b.active = false
+			b.defeated = true
+			return true
+		}
 		return false
 	}
 	b.hit_flash = BOSS_HIT_FLASH_TIME
@@ -1370,6 +1574,11 @@ update_boss :: proc(pool: ^Boss_Pool, bullets: ^Bullet_Pool, sneaks: ^Sneak_Pool
 
 	if b.kind == .Morgan {
 		update_morgan(b, bullets, sneaks, dt)
+		return
+	}
+
+	if b.kind == .Ancient_Guardian {
+		update_ancient_guardian(b, bullets, dt)
 		return
 	}
 
@@ -1442,6 +1651,9 @@ draw_boss_hud :: proc(pool: ^Boss_Pool) {
 	if b.kind == .Morgan {
 		max_hp = MORGAN_PHASE_HP
 	}
+	if b.kind == .Ancient_Guardian {
+		max_hp = GUARDIAN_TOTAL_HP
+	}
 	fill_w := i32(f32(BOSS_HUD_BAR_W) * f32(hp) / f32(max_hp))
 	if fill_w > 0 {
 		rl.DrawRectangle(bar_x, bar_y, fill_w, BOSS_HUD_BAR_H, rl.Color{220, 40, 60, 255})
@@ -1452,6 +1664,9 @@ draw_boss_hud :: proc(pool: ^Boss_Pool) {
 	name: cstring = BOSS_NAME
 	if b.kind == .Morgan {
 		name = MORGAN_NAME
+	}
+	if b.kind == .Ancient_Guardian {
+		name = GUARDIAN_NAME
 	}
 	text_w := rl.MeasureText(name, BOSS_NAME_FONT_SIZE)
 	name_x := (i32(SCREEN_WIDTH) - text_w) / 2
@@ -1493,6 +1708,12 @@ draw_boss :: proc(pool: ^Boss_Pool) {
 		frame_h = MORGAN_FRAME_H
 		scale = MORGAN_DRAW_SCALE
 	}
+	if b.kind == .Ancient_Guardian {
+		tex = pool.guardian_tex
+		frame_w = GUARDIAN_FRAME_W
+		frame_h = GUARDIAN_FRAME_H
+		scale = GUARDIAN_DRAW_SCALE
+	}
 	draw_w := f32(frame_w) * scale
 	draw_h := f32(frame_h) * scale
 	src := rl.Rectangle{f32(i32(b.frame) * frame_w), 0, f32(frame_w), f32(frame_h)}
@@ -1514,6 +1735,46 @@ draw_boss :: proc(pool: ^Boss_Pool) {
 		alpha := u8(120 + pulse * 80)
 		rl.DrawCircleLinesV(b.pos, ring_r, rl.Color{120, 200, 255, alpha})
 		rl.DrawCircleLinesV(b.pos, ring_r - 1, rl.Color{200, 230, 255, alpha / 2})
+	}
+
+	if b.kind == .Ancient_Guardian {
+		draw_guardian_orbs(b)
+	}
+}
+
+@(private = "file")
+draw_guardian_orbs :: proc(b: ^Boss) {
+	t := f32(rl.GetTime())
+	for i in 0 ..< GUARDIAN_ORB_COUNT {
+		o := &b.orbs[i]
+		if !o.active {
+			continue
+		}
+		core: rl.Color
+		mid:  rl.Color
+		glow: rl.Color
+		if i == b.vulnerable_orb_idx {
+			pulse := 0.5 + 0.5 * math.sin(t * 6.0)
+			a_glow := u8(70 + pulse * 80)
+			a_mid := u8(180 + pulse * 60)
+			core = rl.Color{255, 250, 220, 255}
+			mid = rl.Color{255, 220, 100, a_mid}
+			glow = rl.Color{255, 180, 60, a_glow}
+		} else {
+			core = rl.Color{220, 200, 255, 235}
+			mid = rl.Color{160, 100, 220, 200}
+			glow = rl.Color{90, 50, 160, 110}
+		}
+		flashing := o.hit_flash > 0
+		if flashing {
+			core = rl.WHITE
+			mid = rl.WHITE
+			glow = rl.Color{255, 255, 255, 180}
+		}
+		rl.DrawCircleV(o.pos, GUARDIAN_ORB_RADIUS * 1.5, glow)
+		rl.DrawCircleV(o.pos, GUARDIAN_ORB_RADIUS, mid)
+		rl.DrawCircleV(o.pos, GUARDIAN_ORB_RADIUS * 0.45, core)
+		rl.DrawCircleLinesV(o.pos, GUARDIAN_ORB_RADIUS, rl.Color{255, 255, 255, 200})
 	}
 }
 
@@ -1610,6 +1871,118 @@ update_morgan :: proc(b: ^Boss, bullets: ^Bullet_Pool, sneaks: ^Sneak_Pool, dt: 
 	}
 }
 
-// #endregion
+@(private = "file")
+update_ancient_guardian :: proc(b: ^Boss, bullets: ^Bullet_Pool, dt: f32) {
+	b.sway_phase += GUARDIAN_SWAY_FREQ * math.TAU * dt
+	if b.sway_phase >= math.TAU {
+		b.sway_phase -= math.TAU
+	}
+	sx := math.sin(b.sway_phase)
+	cx := math.cos(b.sway_phase)
+	b.pos.x = GUARDIAN_SPAWN_X + sx * GUARDIAN_SWAY_AMP
+	b.pos.y = GUARDIAN_SPAWN_Y + sx * cx * GUARDIAN_SWAY_AMP * BOSS_FIGURE8_Y_RATIO
 
+	b.frame_time += dt
+	frame_dur: f32 = 1.0 / GUARDIAN_ANIM_FPS
+	if b.frame_time >= frame_dur {
+		b.frame_time -= frame_dur
+		b.frame = (b.frame + 1) % GUARDIAN_FRAMES
+	}
+
+	if b.in_window {
+		// Damage window: the boss is exposed for GUARDIAN_WINDOW_DURATION.
+		// When the timer expires, all orbs respawn at full hp and the cycle
+		// restarts. The boss's current hp persists across cycles. The body
+		// also lays down its own ring attack while exposed — the orbs are
+		// gone, so this fills the bullet-density vacuum.
+		b.window_timer -= dt
+		if b.window_timer <= 0 {
+			b.window_timer = 0
+			spawn_guardian_orbs(b)
+			b.fire_timer = 0
+		} else {
+			b.fire_timer += dt
+			ring_color := rl.Color{255, 200, 100, 255}
+			step := math.TAU / f32(GUARDIAN_RING_BULLETS)
+			for b.fire_timer >= GUARDIAN_FIRE_INTERVAL {
+				b.fire_timer -= GUARDIAN_FIRE_INTERVAL
+				for r in 0 ..< GUARDIAN_RING_BULLETS {
+					ang := f32(r) * step
+					vel := rl.Vector2 {
+						math.cos(ang) * GUARDIAN_BULLET_SPEED,
+						math.sin(ang) * GUARDIAN_BULLET_SPEED,
+					}
+					spawn_bullet(bullets, b.pos, vel, ring_color, .Enemy, .Boss, 0)
+				}
+			}
+		}
+		return
+	}
+
+	b.orbit_phase += GUARDIAN_ORB_ORBIT_SPEED * dt
+	if b.orbit_phase >= math.TAU {
+		b.orbit_phase -= math.TAU
+	}
+
+	// Vulnerability rotation: if the player doesn't kill the highlighted orb
+	// before the timer expires, pick a different alive orb and reset the
+	// timer. Damage already dealt to non-killed orbs is preserved.
+	b.vulnerable_timer -= dt
+	if b.vulnerable_timer <= 0 {
+		b.vulnerable_timer = GUARDIAN_ORB_VULNERABLE_TIME
+		b.vulnerable_orb_idx = pick_random_alive_orb(b, b.vulnerable_orb_idx)
+	}
+
+	row_step: f32 = math.TAU / f32(GUARDIAN_ORB_BULLETS_PER_BURST)
+	inc_rad: f32 = f32(GUARDIAN_ORB_ANGLE_INC_DEG) * math.PI / 180.0
+	non_vuln_color := rl.Color{160, 100, 220, 255}
+	vuln_color := rl.Color{255, 220, 100, 255}
+
+	for i in 0 ..< GUARDIAN_ORB_COUNT {
+		o := &b.orbs[i]
+		if !o.active {
+			continue
+		}
+
+		angle := b.orbit_phase + o.angle_offset
+		o.pos = {
+			b.pos.x + math.cos(angle) * GUARDIAN_ORB_ORBIT_RADIUS,
+			b.pos.y + math.sin(angle) * GUARDIAN_ORB_ORBIT_RADIUS,
+		}
+
+		if o.hit_flash > 0 {
+			o.hit_flash -= dt
+			if o.hit_flash < 0 {
+				o.hit_flash = 0
+			}
+		}
+
+		color := non_vuln_color
+		if i == b.vulnerable_orb_idx {
+			color = vuln_color
+		}
+
+		o.fire_timer += dt
+		for o.fire_timer >= GUARDIAN_ORB_FIRE_INTERVAL {
+			o.fire_timer -= GUARDIAN_ORB_FIRE_INTERVAL
+			for r in 0 ..< GUARDIAN_ORB_BULLETS_PER_BURST {
+				ang := o.spiral_angle + f32(r) * row_step
+				vel := rl.Vector2 {
+					math.cos(ang) * GUARDIAN_ORB_BULLET_SPEED,
+					math.sin(ang) * GUARDIAN_ORB_BULLET_SPEED,
+				}
+				spawn_bullet(bullets, o.pos, vel, color, .Enemy, .Guardian_Orb, i)
+			}
+			o.spiral_angle += inc_rad * o.spin_dir
+			if o.spiral_angle >= math.TAU {
+				o.spiral_angle -= math.TAU
+			}
+			if o.spiral_angle < 0 {
+				o.spiral_angle += math.TAU
+			}
+		}
+	}
+}
+
+// #endregion
 

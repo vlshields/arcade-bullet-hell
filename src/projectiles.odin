@@ -228,13 +228,40 @@ collide_beams_enemies :: proc(
 		if boss.boss.active {
 			bc := boss_center(&boss.boss)
 			if beam_segment_hits(b.start, b.end, bc, boss_hit_radius(&boss.boss)) {
-				killed := damage_boss(&boss.boss, b.damage)
-				spawn_impact_particles(particles, bc, rl.RED, LASER_IMPACT_PARTICLES)
-				if killed {
-					score^ += SCORE_KILL_BOSS
-					try_drop_healthpack(packs, bc)
+				if boss_can_take_damage(&boss.boss) {
+					killed := damage_boss(&boss.boss, b.damage)
+					spawn_impact_particles(particles, bc, rl.RED, LASER_IMPACT_PARTICLES)
+					if killed {
+						score^ += SCORE_KILL_BOSS
+						try_drop_healthpack(packs, bc)
+					}
+				} else {
+					spawn_impact_particles(particles, bc, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
 				}
 				b.active = false
+				continue
+			}
+		}
+		if boss.boss.active && boss.boss.kind == .Ancient_Guardian {
+			for oi in 0 ..< GUARDIAN_ORB_COUNT {
+				o := &boss.boss.orbs[oi]
+				if !o.active {
+					continue
+				}
+				if !beam_segment_hits(b.start, b.end, o.pos, GUARDIAN_ORB_HIT_RADIUS) {
+					continue
+				}
+				applied, killed := damage_guardian_orb(&boss.boss, oi, b.damage)
+				if applied {
+					spawn_impact_particles(particles, o.pos, rl.RED, LASER_IMPACT_PARTICLES)
+					if killed {
+						score^ += GUARDIAN_ORB_KILL_SCORE
+					}
+				} else {
+					spawn_impact_particles(particles, o.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
+				}
+				b.active = false
+				break
 			}
 		}
 	}
@@ -357,6 +384,7 @@ Bullet_Source :: enum {
 	Sneak,
 	Boss,
 	Pillar,
+	Guardian_Orb,
 }
 
 Bullet :: struct {
@@ -492,6 +520,18 @@ lookup_source_center :: proc(
 			return
 		}
 		return pillar_center(p), true
+	case .Guardian_Orb:
+		if !boss.boss.active || boss.boss.kind != .Ancient_Guardian {
+			return
+		}
+		if index < 0 || index >= GUARDIAN_ORB_COUNT {
+			return
+		}
+		o := &boss.boss.orbs[index]
+		if !o.active {
+			return
+		}
+		return o.pos, true
 	}
 	return
 }
@@ -781,13 +821,43 @@ collide_bullets_enemies :: proc(
 			dx := b.pos.x - bc.x
 			dy := b.pos.y - bc.y
 			if dx * dx + dy * dy <= r_boss_sq {
-				killed := damage_boss(&boss.boss, damage)
-				spawn_impact_particles(particles, bc, impact_color, REFLECT_IMPACT_PARTICLES)
-				b.active = false
-				if killed {
-					score^ += SCORE_KILL_BOSS
-					try_drop_healthpack(packs, bc)
+				if boss_can_take_damage(&boss.boss) {
+					killed := damage_boss(&boss.boss, damage)
+					spawn_impact_particles(particles, bc, impact_color, REFLECT_IMPACT_PARTICLES)
+					if killed {
+						score^ += SCORE_KILL_BOSS
+						try_drop_healthpack(packs, bc)
+					}
+				} else {
+					spawn_impact_particles(particles, bc, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
 				}
+				b.active = false
+				continue
+			}
+		}
+		if boss.boss.active && boss.boss.kind == .Ancient_Guardian {
+			for oi in 0 ..< GUARDIAN_ORB_COUNT {
+				o := &boss.boss.orbs[oi]
+				if !o.active {
+					continue
+				}
+				r: f32 = GUARDIAN_ORB_HIT_RADIUS + BULLET_RADIUS
+				dx := b.pos.x - o.pos.x
+				dy := b.pos.y - o.pos.y
+				if dx * dx + dy * dy > r * r {
+					continue
+				}
+				applied, killed := damage_guardian_orb(&boss.boss, oi, damage)
+				if applied {
+					spawn_impact_particles(particles, o.pos, impact_color, REFLECT_IMPACT_PARTICLES)
+					if killed {
+						score^ += GUARDIAN_ORB_KILL_SCORE
+					}
+				} else {
+					spawn_impact_particles(particles, o.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
+				}
+				b.active = false
+				break
 			}
 		}
 	}
@@ -1052,6 +1122,25 @@ nearest_target :: proc(
 			found = true
 		}
 	}
+	// Guardian orbs are valid homing targets — invulnerable orbs absorb the
+	// missile, but homing toward them is consistent with the rest of the
+	// "any visible threat is a target" rule.
+	if boss.boss.active && boss.boss.kind == .Ancient_Guardian {
+		for i in 0 ..< GUARDIAN_ORB_COUNT {
+			o := &boss.boss.orbs[i]
+			if !o.active {
+				continue
+			}
+			dx := o.pos.x - from.x
+			dy := o.pos.y - from.y
+			d_sq := dx * dx + dy * dy
+			if d_sq < best_d_sq {
+				best_d_sq = d_sq
+				target = o.pos
+				found = true
+			}
+		}
+	}
 	// Pillars are valid homing targets like any other enemy — wrong-order locks
 	// just waste the missile on a blocked impact, which is the cost of firing
 	// without aiming. The kill-order puzzle stays intact.
@@ -1132,11 +1221,39 @@ try_hit_missile :: proc(
 		dx := m.pos.x - bc.x
 		dy := m.pos.y - bc.y
 		if dx * dx + dy * dy <= r * r {
-			killed := damage_boss(&boss.boss, MISSILE_DAMAGE)
-			spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
-			if killed {
-				score^ += SCORE_KILL_BOSS
-				try_drop_healthpack(packs, bc)
+			if boss_can_take_damage(&boss.boss) {
+				killed := damage_boss(&boss.boss, MISSILE_DAMAGE)
+				spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
+				if killed {
+					score^ += SCORE_KILL_BOSS
+					try_drop_healthpack(packs, bc)
+				}
+			} else {
+				spawn_impact_particles(particles, m.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
+			}
+			return true
+		}
+	}
+	if boss.boss.active && boss.boss.kind == .Ancient_Guardian {
+		for i in 0 ..< GUARDIAN_ORB_COUNT {
+			o := &boss.boss.orbs[i]
+			if !o.active {
+				continue
+			}
+			r: f32 = GUARDIAN_ORB_HIT_RADIUS + MISSILE_HIT_RADIUS
+			dx := m.pos.x - o.pos.x
+			dy := m.pos.y - o.pos.y
+			if dx * dx + dy * dy > r * r {
+				continue
+			}
+			applied, killed := damage_guardian_orb(&boss.boss, i, MISSILE_DAMAGE)
+			if applied {
+				spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
+				if killed {
+					score^ += GUARDIAN_ORB_KILL_SCORE
+				}
+			} else {
+				spawn_impact_particles(particles, m.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
 			}
 			return true
 		}

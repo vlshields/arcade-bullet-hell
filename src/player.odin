@@ -633,11 +633,39 @@ fire_charge_beam :: proc(
 	if boss.boss.active {
 		bc := boss_center(&boss.boss)
 		if bc.y <= b.start.y && abs(bc.x - pcx) <= half_width + boss_hit_radius(&boss.boss) {
-			killed := damage_boss(&boss.boss, damage)
-			spawn_impact_particles(particles, bc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
-			if killed {
-				score^ += SCORE_KILL_BOSS
-				try_drop_healthpack(packs, bc)
+			if boss_can_take_damage(&boss.boss) {
+				killed := damage_boss(&boss.boss, damage)
+				spawn_impact_particles(particles, bc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
+				if killed {
+					score^ += SCORE_KILL_BOSS
+					try_drop_healthpack(packs, bc)
+				}
+			} else {
+				spawn_impact_particles(particles, bc, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
+			}
+		}
+	}
+
+	if boss.boss.active && boss.boss.kind == .Ancient_Guardian {
+		for i in 0 ..< GUARDIAN_ORB_COUNT {
+			o := &boss.boss.orbs[i]
+			if !o.active {
+				continue
+			}
+			if o.pos.y > b.start.y {
+				continue
+			}
+			if abs(o.pos.x - pcx) > half_width + GUARDIAN_ORB_HIT_RADIUS {
+				continue
+			}
+			applied, killed := damage_guardian_orb(&boss.boss, i, damage)
+			if applied {
+				spawn_impact_particles(particles, o.pos, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
+				if killed {
+					score^ += GUARDIAN_ORB_KILL_SCORE
+				}
+			} else {
+				spawn_impact_particles(particles, o.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
 			}
 		}
 	}

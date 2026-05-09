@@ -870,6 +870,9 @@ advance_to_next_mission :: proc() {
 	if gs.level == 4 {
 		reset_level4_pacing(&gs.enemies)
 	}
+	if gs.level == 5 {
+		spawn_ancient_guardian(&gs.boss)
+	}
 	gs.player.hp = PLAYER_MAX_HP
 	gs.player.shrink_bombs = SHRINK_BOMBS_PER_LEVEL
 	show_mission_title(&gs.mission_title, gs.level)
@@ -905,12 +908,7 @@ smoothstep :: proc(t: f32) -> f32 {
 update_screen_scale :: proc() {
 	sx := f32(gs.window_w) / f32(SCREEN_WIDTH)
 	sy := f32(gs.window_h) / f32(SCREEN_HEIGHT)
-	raw_scale := min(sx, sy)
-	if raw_scale >= 1 {
-		gs.scale = f32(int(raw_scale))
-	} else {
-		gs.scale = raw_scale
-	}
-	gs.offset_x = f32(int((f32(gs.window_w) - f32(SCREEN_WIDTH) * gs.scale) * 0.5))
-	gs.offset_y = f32(int((f32(gs.window_h) - f32(SCREEN_HEIGHT) * gs.scale) * 0.5))
+	gs.scale = min(sx, sy)
+	gs.offset_x = (f32(gs.window_w) - f32(SCREEN_WIDTH) * gs.scale) * 0.5
+	gs.offset_y = (f32(gs.window_h) - f32(SCREEN_HEIGHT) * gs.scale) * 0.5
 }
