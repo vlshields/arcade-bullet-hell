@@ -1,0 +1,21 @@
+{
+    "scenes": [
+        {
+            "scene_id": "l402",
+            "wave_id": [
+                { "id": "pillars", "when": "before", "once_completed": "wave_begins" }
+            ],
+            "lines": [
+
+                {
+                    "speaker": "captain_paprika",
+                    "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
+                    "text": "Shoot them in the correct order!"
+                }
+      
+            ]
+
+        }
+
+    ]
+}

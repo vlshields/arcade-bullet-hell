@@ -34,6 +34,8 @@ Game_State :: struct {
 	transition_swapped: bool,
 	running:            bool,
 	victory:            bool,
+	victory_pending:    bool,
+	victory_delay_t:    f32,
 	choosing_upgrade:   bool,
 	// Up to 3 distinct upgrades sampled from the player's available pool at the
 	// end of each level. upgrade_cursor indexes into upgrade_choices, not the
@@ -108,6 +110,8 @@ start_new_game :: proc() {
 	gs.level = 1
 	gs.score = 0
 	gs.victory = false
+	gs.victory_pending = false
+	gs.victory_delay_t = 0
 	gs.transitioning = false
 	gs.transition_t = 0
 	gs.transition_swapped = false
@@ -130,11 +134,15 @@ start_new_game :: proc() {
 
 	spawn_wave(&gs.enemies)
 	set_background_level(&gs.background, 1)
-	play_gameplay_music(&gs.audio)
+	play_track(&gs.audio, gameplay_track_for_level(gs.level))
 
 	gs.dialogue.intro_done = false
 	gs.dialogue.wave2_intro_done = false
 	gs.dialogue.boss_intro_done = false
+	gs.dialogue.l2_intro_done = false
+	gs.dialogue.l4_intro_done = false
+	gs.dialogue.l4_pillars_intro_done = false
+	gs.dialogue.l5_guardian_intro_done = false
 	start_level1_intro(&gs.dialogue)
 	show_mission_title(&gs.mission_title, gs.level)
 
@@ -145,6 +153,8 @@ start_new_game :: proc() {
 return_to_main_menu :: proc() {
 	gs.paused = false
 	gs.victory = false
+	gs.victory_pending = false
+	gs.victory_delay_t = 0
 	gs.transitioning = false
 	gs.transition_t = 0
 	gs.transition_swapped = false
@@ -157,7 +167,7 @@ return_to_main_menu :: proc() {
 	stop_rapid_fire_sfx(&gs.audio)
 	stop_charging_beam_sfx(&gs.audio)
 	stop_golgotha_bullet_hell_sfx(&gs.audio)
-	play_gameplay_music(&gs.audio)
+	play_track(&gs.audio, .Gameplay)
 	set_background_level(&gs.background, 1)
 	gs.in_menu = true
 	reset_main_menu(&gs.main_menu)
@@ -253,33 +263,49 @@ update :: proc() {
 	}
 
 	if !gs.paused {
-		if gs.boss.boss.defeated && !gs.victory {
-			gs.victory = true
-			clear_world()
-			open_upgrade_choice()
-			play_victory_music(&gs.audio)
+		if gs.boss.boss.defeated && !gs.victory && !gs.victory_pending {
+			gs.victory_pending = true
+			gs.victory_delay_t = VICTORY_DELAY
 		}
 
 		// Level 2 has no boss yet; victory triggers once the scripted phase sequence
 		// has been cleared LEVEL2_WAVES_TO_VICTORY times. Rewards / level 3 are TBD.
 		if gs.level == 2 &&
 		   gs.enemies.level2_waves_complete >= LEVEL2_WAVES_TO_VICTORY &&
-		   !gs.victory {
-			gs.victory = true
-			clear_world()
-			open_upgrade_choice()
-			play_victory_music(&gs.audio)
+		   !gs.victory &&
+		   !gs.victory_pending {
+			gs.victory_pending = true
+			gs.victory_delay_t = VICTORY_DELAY
 		}
 
 		// Level 4 mirrors the level-2 wave-count gate; no boss, just the four
 		// scripted alternating waves.
 		if gs.level == 4 &&
 		   gs.enemies.level4_waves_complete >= LEVEL4_WAVES_TO_VICTORY &&
-		   !gs.victory {
-			gs.victory = true
-			clear_world()
-			open_upgrade_choice()
-			play_victory_music(&gs.audio)
+		   !gs.victory &&
+		   !gs.victory_pending {
+			gs.victory_pending = true
+			gs.victory_delay_t = VICTORY_DELAY
+		}
+
+		// Hold gameplay live for VICTORY_DELAY seconds after the win condition
+		// fires so the kill / final-wave clear can register before the upgrade
+		// overlay takes the screen.
+		if gs.victory_pending && !gs.victory {
+			gs.victory_delay_t -= dt
+			if gs.victory_delay_t <= 0 {
+				gs.victory_pending = false
+				gs.victory_delay_t = 0
+				gs.victory = true
+				clear_world()
+				open_upgrade_choice()
+				// themesong1 is reserved for the final game-victory screen
+				// (after the last level). Intermediate level wins keep the
+				// current gameplay track rolling under the upgrade overlay.
+				if gs.level >= MAX_LEVEL {
+					play_track(&gs.audio, .Final_Victory)
+				}
+			}
 		}
 
 		if gs.victory && gs.choosing_upgrade {
@@ -333,9 +359,11 @@ update :: proc() {
 		// sees the empty pool and spawns the next wave, so wave 2 grunts don't pop
 		// in mid-screen while the dialogue is up.
 		maybe_trigger_pre_wave_dialogue()
-		// hint_03 is wave_id when="during" — fires once Golgatha is on the field,
-		// overlaying live gameplay (pauses_game:false).
+		maybe_trigger_l4_pillars_dialogue()
+		// hint_03 / l501 are wave_id when="during" — fire once the boss is on the
+		// field, overlaying live gameplay (non-pausing).
 		maybe_trigger_boss_dialogue()
+		maybe_trigger_l5_guardian_dialogue()
 
 		if !gs.victory && !gs.transitioning && !dialogue_blocking {
 			if boss_pausing {
@@ -346,8 +374,15 @@ update :: proc() {
 				}
 				update_player(&gs.player, &gs.missiles, &gs.audio, dt)
 				update_level2_pacing(&gs.enemies, &gs.sneaks, world_dt)
-				update_level4_pacing(&gs.enemies, &gs.pillars, world_dt)
-				update_enemies(&gs.enemies, &gs.boss, &gs.bullets, &gs.player, world_dt)
+				update_level4_pacing(&gs.enemies, &gs.pillars, world_dt, gs.dialogue.active)
+				update_enemies(
+					&gs.enemies,
+					&gs.boss,
+					&gs.bullets,
+					&gs.player,
+					world_dt,
+					gs.dialogue.active,
+				)
 				update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, world_dt)
 				update_boss(&gs.boss, &gs.bullets, &gs.sneaks, world_dt)
 				update_pillars(&gs.pillars, &gs.bullets, world_dt)
@@ -580,6 +615,40 @@ maybe_trigger_boss_dialogue :: proc() {
 	start_level1_boss_intro(&gs.dialogue)
 }
 
+// Fires before the Wave4_Pillars phase actually spawns — the level-4 pacing
+// gate (block_next_wave) keeps the pillars off the field until the player
+// dismisses the line. Non-pausing so the world keeps breathing under the box.
+@(private = "file")
+maybe_trigger_l4_pillars_dialogue :: proc() {
+	if gs.dialogue.active || gs.victory || gs.transitioning {
+		return
+	}
+	if gs.level != 4 || gs.dialogue.l4_pillars_intro_done {
+		return
+	}
+	if gs.enemies.level4_phase != .Wave4_Pillars {
+		return
+	}
+	if gs.enemies.level4_phase_started {
+		return
+	}
+	start_level4_pillars_intro(&gs.dialogue)
+}
+
+@(private = "file")
+maybe_trigger_l5_guardian_dialogue :: proc() {
+	if gs.dialogue.active || gs.victory || gs.transitioning {
+		return
+	}
+	if gs.level != 5 || gs.dialogue.l5_guardian_intro_done {
+		return
+	}
+	if !gs.boss.boss.active || gs.boss.boss.kind != .Ancient_Guardian {
+		return
+	}
+	start_level5_guardian_intro(&gs.dialogue)
+}
+
 clear_world :: proc() {
 	for i in 0 ..< ENEMY_COUNT {
 		gs.enemies.enemies[i].active = false
@@ -752,7 +821,7 @@ upgrade_card_info :: proc(
 		return "RAPID FIRE",
 			"Your attack becomes a",
 			"rapid fire bullet launcher.",
-			"You can no longer use a charged beam.",
+			"Your charged beam deactivates.",
 			rl.Color{255, 80, 80, 255}
 	case .Beam_Blast:
 		return "SHOTGUN",
@@ -858,7 +927,7 @@ draw_upgrade_card :: proc(
 	}
 	cx := x + (UPGRADE_CARD_W - (cue_text_w + icon_w)) / 2
 	cy := ny + UPGRADE_NAME_FONT_SIZE + 6
-	rl.DrawText(cue, cx, cy, UPGRADE_BODY_FONT_SIZE, rl.Color{200, 200, 200, 255})
+	rl.DrawText(cue, cx, cy, UPGRADE_BODY_FONT_SIZE, rl.WHITE)
 	if upgrade == .Slow_Time {
 		icon_y := cy + (UPGRADE_BODY_FONT_SIZE - HINT_ICON_SIZE) / 2
 		draw_input_hint(.Slow_Time, cx + cue_text_w + HINT_TEXT_GAP, icon_y, HINT_ICON_SIZE)
@@ -872,13 +941,17 @@ draw_upgrade_card :: proc(
 	l2_w := rl.MeasureText(line2, UPGRADE_BODY_FONT_SIZE)
 	l2x := x + (UPGRADE_CARD_W - l2_w) / 2
 	l2y := l1y + UPGRADE_BODY_FONT_SIZE + 4
-	rl.DrawText(line2, l2x, l2y, UPGRADE_BODY_FONT_SIZE, rl.Color{220, 220, 220, 255})
+	rl.DrawText(line2, l2x, l2y, UPGRADE_BODY_FONT_SIZE, rl.WHITE)
 }
 
 advance_to_next_mission :: proc() {
 	gs.level += 1
 	gs.victory = false
-	play_gameplay_music(&gs.audio)
+	gs.victory_pending = false
+	gs.victory_delay_t = 0
+	// play_track is idempotent: levels 2→3 share Levels_2_3 and won't restart.
+	// 4→5 actually swaps streams (Gameplay → Guardian).
+	play_track(&gs.audio, gameplay_track_for_level(gs.level))
 	set_background_level(&gs.background, gs.level)
 	clear_world()
 	// Boss flag reset so a level-2 boss can later trigger the victory branch again.
@@ -890,12 +963,14 @@ advance_to_next_mission :: proc() {
 	gs.enemies.level = gs.level
 	if gs.level == 2 {
 		reset_level2_pacing(&gs.enemies, &gs.sneaks)
+		start_level2_intro(&gs.dialogue)
 	}
 	if gs.level == 3 {
 		spawn_morgan(&gs.boss)
 	}
 	if gs.level == 4 {
 		reset_level4_pacing(&gs.enemies)
+		start_level4_intro(&gs.dialogue)
 	}
 	if gs.level == 5 {
 		spawn_ancient_guardian(&gs.boss)

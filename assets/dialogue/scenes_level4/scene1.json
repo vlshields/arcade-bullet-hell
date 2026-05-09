@@ -1,0 +1,30 @@
+{
+    "scenes": [
+        {
+            "scene_id": "l401",
+            "wave_id": [
+                { "id": "01", "when": "before", "once_completed": "wave_begins" }
+            ],
+            "lines": [
+
+                {
+                    "speaker": "captain_paprika",
+                    "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
+                    "text": "Now we must destroy the enemies primary base."
+                },
+                {
+                    "speaker": "player_zombi",
+                    "dialogue_box_animation": "player_zombi_dialogue_icon.png",
+                    "text": "Whats it look like?"
+                },
+                {
+                    "speaker": "captain_paprika",
+                    "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
+                    "text": "Ummm. Well it's a giant space station."
+                }
+            ]
+
+        }
+
+    ]
+}

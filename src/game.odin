@@ -10,15 +10,31 @@ import "core:strings"
 
 
 // #region Audio
+
+// One stream per track. Mapping:
+//   Gameplay        — themesong2, levels 1 and 4
+//   Levels_2_3      — themesong3, levels 2 and 3
+//   Guardian        — themesong4, level 5 boss fight
+//   Final_Victory   — themesong1, only the post-final-boss screen
+Music_Track :: enum {
+	Gameplay,
+	Levels_2_3,
+	Guardian,
+	Final_Victory,
+}
+
+MUSIC_TRACK_PATHS := [Music_Track]cstring {
+	.Gameplay      = "assets/audio/soundtrack/themesong2.ogg",
+	.Levels_2_3    = "assets/audio/soundtrack/themesong3_lvl2-lvl3.ogg",
+	.Guardian      = "assets/audio/soundtrack/themesong4_guardian.ogg",
+	.Final_Victory = "assets/audio/soundtrack/themesong1.ogg",
+}
+
 Audio :: struct {
 	music_volume:             f32,
 	sfx_volume:               f32,
-	// theme2 loops during gameplay; theme1 takes over while a victory screen is
-	// up and yields back to theme2 on advance_to_next_mission. on_victory tracks
-	// which stream update_audio should advance.
-	theme1:                   rl.Music,
-	theme2:                   rl.Music,
-	on_victory:               bool,
+	music:                    [Music_Track]rl.Music,
+	current_track:            Music_Track,
 	sfx_charged_beam:         rl.Sound,
 	sfx_charging_beam:        rl.Sound,
 	sfx_dash:                 rl.Sound,
@@ -35,13 +51,13 @@ init_audio :: proc(a: ^Audio) {
 	a.music_volume = MUSIC_VOLUME
 	a.sfx_volume = SFX_VOLUME
 
-	a.theme1 = rl.LoadMusicStream("assets/audio/soundtrack/themesong1.ogg")
-	a.theme1.looping = true
-	a.theme2 = rl.LoadMusicStream("assets/audio/soundtrack/themesong2.ogg")
-	a.theme2.looping = true
-	rl.SetMusicVolume(a.theme1, a.music_volume)
-	rl.SetMusicVolume(a.theme2, a.music_volume)
-	rl.PlayMusicStream(a.theme2)
+	for t in Music_Track {
+		a.music[t] = rl.LoadMusicStream(MUSIC_TRACK_PATHS[t])
+		a.music[t].looping = true
+		rl.SetMusicVolume(a.music[t], a.music_volume)
+	}
+	a.current_track = .Gameplay
+	rl.PlayMusicStream(a.music[a.current_track])
 
 	a.sfx_charged_beam = rl.LoadSound("assets/audio/sfx/player_charged_beam.wav")
 	a.sfx_charging_beam = rl.LoadSound("assets/audio/sfx/player_charging_beam.wav")
@@ -57,39 +73,36 @@ init_audio :: proc(a: ^Audio) {
 }
 
 update_audio :: proc(a: ^Audio) {
-	if a.on_victory {
-		rl.UpdateMusicStream(a.theme1)
-	} else {
-		rl.UpdateMusicStream(a.theme2)
-	}
+	rl.UpdateMusicStream(a.music[a.current_track])
 }
 
-// Swap to the victory loop. Idempotent: safe to call every frame the victory
-// screen is up.
-play_victory_music :: proc(a: ^Audio) {
-	if a.on_victory {
+// Idempotent track swap — safe to call every frame.
+play_track :: proc(a: ^Audio, t: Music_Track) {
+	if a.current_track == t {
 		return
 	}
-	rl.StopMusicStream(a.theme2)
-	rl.PlayMusicStream(a.theme1)
-	a.on_victory = true
+	rl.StopMusicStream(a.music[a.current_track])
+	rl.PlayMusicStream(a.music[t])
+	a.current_track = t
 }
 
-// Swap back to the gameplay loop. Idempotent.
-play_gameplay_music :: proc(a: ^Audio) {
-	if !a.on_victory {
-		return
+// Picks the right gameplay track for a level. Used at level entry and on
+// returns to menu / new-game starts.
+gameplay_track_for_level :: proc(level: int) -> Music_Track {
+	switch level {
+	case 2, 3:
+		return .Levels_2_3
+	case 5:
+		return .Guardian
 	}
-	rl.StopMusicStream(a.theme1)
-	rl.PlayMusicStream(a.theme2)
-	a.on_victory = false
+	return .Gameplay
 }
 
 unload_audio :: proc(a: ^Audio) {
-	rl.StopMusicStream(a.theme1)
-	rl.StopMusicStream(a.theme2)
-	rl.UnloadMusicStream(a.theme1)
-	rl.UnloadMusicStream(a.theme2)
+	for t in Music_Track {
+		rl.StopMusicStream(a.music[t])
+		rl.UnloadMusicStream(a.music[t])
+	}
 	rl.UnloadSound(a.sfx_charged_beam)
 	rl.UnloadSound(a.sfx_charging_beam)
 	rl.UnloadSound(a.sfx_dash)
@@ -104,8 +117,9 @@ unload_audio :: proc(a: ^Audio) {
 
 set_music_volume :: proc(a: ^Audio, v: f32) {
 	a.music_volume = clamp(v, 0.0, 1.0)
-	rl.SetMusicVolume(a.theme1, a.music_volume)
-	rl.SetMusicVolume(a.theme2, a.music_volume)
+	for t in Music_Track {
+		rl.SetMusicVolume(a.music[t], a.music_volume)
+	}
 }
 
 set_sfx_volume :: proc(a: ^Audio, v: f32) {
@@ -698,12 +712,26 @@ reset_level4_pacing :: proc(enemies: ^Enemy_Pool) {
 	enemies.fire_interval = LEVEL4_GRUNT_FIRE_INTERVAL
 }
 
-update_level4_pacing :: proc(enemies: ^Enemy_Pool, pillars: ^Pillar_Wave, dt: f32) {
+update_level4_pacing :: proc(
+	enemies: ^Enemy_Pool,
+	pillars: ^Pillar_Wave,
+	dt: f32,
+	block_next_wave: bool,
+) {
 	if enemies.level != 4 {
 		return
 	}
 
-	if !enemies.level4_phase_started {
+	// Wave4_Pillars self-loops in advance_phase_l4 (resets phase_started),
+	// so without this gate the pillars would re-spawn during VICTORY_DELAY
+	// and flash on screen before clear_world fires.
+	if enemies.level4_waves_complete >= LEVEL4_WAVES_TO_VICTORY {
+		return
+	}
+
+	// block_next_wave defers on_enter while a between-phase dialogue (l402) is
+	// up, so the pillars don't pop in under the box.
+	if !enemies.level4_phase_started && !block_next_wave {
 		on_enter_phase_l4(enemies, pillars)
 		enemies.level4_phase_started = true
 	}
@@ -1210,42 +1238,57 @@ Dialogue_Line :: struct {
 
 Dialogue_Source_Line :: struct {
 	speaker: string,
-	line_id: string,
 	text:    string,
-}
-
-Dialogue_Source_Action :: struct {
-	line_id:     string,
-	pauses_game: Maybe(bool),
 }
 
 Dialogue_Source_Scene :: struct {
 	scene_id: string,
 	lines:    []Dialogue_Source_Line,
-	actions:  []Dialogue_Source_Action,
 }
 
 Dialogue_Source :: struct {
 	scenes: []Dialogue_Source_Scene,
 }
 
+// Each entry maps to one JSON file under assets/dialogue/. Scene IDs are unique
+// across all files, so find_scene walks every loaded source.
+Dialogue_File :: enum {
+	Level1_Hints,
+	Level2,
+	Level4_Scene1,
+	Level4_Scene2,
+	Level5,
+}
+
+DIALOGUE_FILE_PATHS := [Dialogue_File]string {
+	.Level1_Hints  = "assets/dialogue/scenes_level1/hints.json",
+	.Level2        = "assets/dialogue/scenes_level2/scene.json",
+	.Level4_Scene1 = "assets/dialogue/scenes_level4/scene1.json",
+	.Level4_Scene2 = "assets/dialogue/scenes_level4/scene2.json",
+	.Level5        = "assets/dialogue/scenes_level5/scene.json",
+}
+
 Dialogue :: struct {
-	active:           bool,
-	pauses_game:      bool,
-	intro_done:       bool, 
-	wave2_intro_done: bool, 
-	boss_intro_done:  bool, 
-	lines:            [8]Dialogue_Line,
-	line_count:       int,
-	line_idx:         int,
-	atoms_revealed:   int,
-	char_timer:       f32,
-	icon_frame:       int,
-	icon_frame_t:     f32,
-	paprika_tex:      rl.Texture2D,
-	zombi_tex:        rl.Texture2D,
-	level1_scenes:    Dialogue_Source,
-	level1_raw:       []byte,
+	active:                 bool,
+	pauses_game:            bool,
+	intro_done:             bool,
+	wave2_intro_done:       bool,
+	boss_intro_done:        bool,
+	l2_intro_done:          bool,
+	l4_intro_done:          bool,
+	l4_pillars_intro_done:  bool,
+	l5_guardian_intro_done: bool,
+	lines:                  [8]Dialogue_Line,
+	line_count:             int,
+	line_idx:               int,
+	atoms_revealed:         int,
+	char_timer:             f32,
+	icon_frame:             int,
+	icon_frame_t:           f32,
+	paprika_tex:            rl.Texture2D,
+	zombi_tex:              rl.Texture2D,
+	sources:                [Dialogue_File]Dialogue_Source,
+	raws:                   [Dialogue_File][]byte,
 }
 
 init_dialogue :: proc(d: ^Dialogue) {
@@ -1254,15 +1297,19 @@ init_dialogue :: proc(d: ^Dialogue) {
 	rl.SetTextureFilter(d.paprika_tex, .POINT)
 	rl.SetTextureFilter(d.zombi_tex, .POINT)
 
-	load_dialogue_source(&d.level1_scenes, &d.level1_raw, "assets/dialogue/scenes_level1/hints.json")
+	for f in Dialogue_File {
+		load_dialogue_source(&d.sources[f], &d.raws[f], DIALOGUE_FILE_PATHS[f])
+	}
 }
 
 unload_dialogue :: proc(d: ^Dialogue) {
 	rl.UnloadTexture(d.paprika_tex)
 	rl.UnloadTexture(d.zombi_tex)
-	if d.level1_raw != nil {
-		delete(d.level1_raw)
-		d.level1_raw = nil
+	for f in Dialogue_File {
+		if d.raws[f] != nil {
+			delete(d.raws[f])
+			d.raws[f] = nil
+		}
 	}
 }
 
@@ -1280,10 +1327,13 @@ load_dialogue_source :: proc(out: ^Dialogue_Source, raw_out: ^[]byte, path: stri
 }
 
 @(private = "file")
-find_scene :: proc(src: ^Dialogue_Source, scene_id: string) -> (^Dialogue_Source_Scene, bool) {
-	for i in 0 ..< len(src.scenes) {
-		if src.scenes[i].scene_id == scene_id {
-			return &src.scenes[i], true
+find_scene :: proc(d: ^Dialogue, scene_id: string) -> (^Dialogue_Source_Scene, bool) {
+	for f in Dialogue_File {
+		src := &d.sources[f]
+		for i in 0 ..< len(src.scenes) {
+			if src.scenes[i].scene_id == scene_id {
+				return &src.scenes[i], true
+			}
 		}
 	}
 	return nil, false
@@ -1300,12 +1350,14 @@ parse_speaker :: proc(s: string) -> (Dialogue_Speaker, bool) {
 	return .Paprika, false
 }
 
+// Pause-vs-overlay is decided by the caller, not the JSON. Level intros (where
+// the player just landed) pause; between-wave and during-boss scenes overlay.
 @(private = "file")
-load_scene :: proc(d: ^Dialogue, scene_id: string) -> int {
-	scene, ok := find_scene(&d.level1_scenes, scene_id)
+start_scene :: proc(d: ^Dialogue, scene_id: string, pauses_game: bool) -> bool {
+	scene, ok := find_scene(d, scene_id)
 	if !ok {
 		log.errorf("dialogue: scene %v not found", scene_id)
-		return 0
+		return false
 	}
 	n := 0
 	for src_line in scene.lines {
@@ -1323,54 +1375,76 @@ load_scene :: proc(d: ^Dialogue, scene_id: string) -> int {
 		}
 		n += 1
 	}
-
-	d.pauses_game = true
-	for action in scene.actions {
-		if pg, set := action.pauses_game.?; set && !pg {
-			d.pauses_game = false
-			break
-		}
+	if n == 0 {
+		return false
 	}
-	return n
+	d.line_count = n
+	d.pauses_game = pauses_game
+	dialogue_begin(d)
+	return true
 }
 
 start_level1_intro :: proc(d: ^Dialogue) {
 	if d.intro_done {
 		return
 	}
-	n := load_scene(d, "hint_01")
-	if n == 0 {
-		return
+	if start_scene(d, "hint_01", true) {
+		d.intro_done = true
 	}
-	d.line_count = n
-	dialogue_begin(d)
-	d.intro_done = true
 }
 
 start_level1_wave2_intro :: proc(d: ^Dialogue) {
 	if d.wave2_intro_done {
 		return
 	}
-	n := load_scene(d, "hint_02")
-	if n == 0 {
-		return
+	if start_scene(d, "hint_02", false) {
+		d.wave2_intro_done = true
 	}
-	d.line_count = n
-	dialogue_begin(d)
-	d.wave2_intro_done = true
 }
 
 start_level1_boss_intro :: proc(d: ^Dialogue) {
 	if d.boss_intro_done {
 		return
 	}
-	n := load_scene(d, "hint_03")
-	if n == 0 {
+	if start_scene(d, "hint_03", false) {
+		d.boss_intro_done = true
+	}
+}
+
+start_level2_intro :: proc(d: ^Dialogue) {
+	if d.l2_intro_done {
 		return
 	}
-	d.line_count = n
-	dialogue_begin(d)
-	d.boss_intro_done = true
+	if start_scene(d, "l201", true) {
+		d.l2_intro_done = true
+	}
+}
+
+start_level4_intro :: proc(d: ^Dialogue) {
+	if d.l4_intro_done {
+		return
+	}
+	if start_scene(d, "l401", true) {
+		d.l4_intro_done = true
+	}
+}
+
+start_level4_pillars_intro :: proc(d: ^Dialogue) {
+	if d.l4_pillars_intro_done {
+		return
+	}
+	if start_scene(d, "l402", false) {
+		d.l4_pillars_intro_done = true
+	}
+}
+
+start_level5_guardian_intro :: proc(d: ^Dialogue) {
+	if d.l5_guardian_intro_done {
+		return
+	}
+	if start_scene(d, "l501", false) {
+		d.l5_guardian_intro_done = true
+	}
 }
 
 @(private = "file")

@@ -215,6 +215,7 @@ update_enemies :: proc(
 	bullets: ^Bullet_Pool,
 	player: ^Player,
 	dt: f32,
+	block_next_wave: bool,
 ) {
 	any_alive := false
 	for i in 0 ..< ENEMY_COUNT {
@@ -223,7 +224,9 @@ update_enemies :: proc(
 			break
 		}
 	}
-	if !any_alive && pool.level < 2 {
+	// block_next_wave defers the level-1 between-wave hand-off so a non-pausing
+	// dialogue can play in the empty arena without wave 2 spawning underneath it.
+	if !any_alive && pool.level < 2 && !block_next_wave {
 		if !boss.boss.active {
 			pool.waves_cleared += 1
 			if pool.waves_cleared == BOSS_TRIGGER_WAVE {
@@ -1195,7 +1198,13 @@ draw_pillars :: proc(wave: ^Pillar_Wave) {
 			num := fmt.ctprintf("%d", p.number)
 			tw := rl.MeasureText(num, PILLAR_NUMBER_FONT_SIZE)
 			tx := i32(p.pos.x) - tw / 2
-			ty := i32(p.pos.y) - i32(PILLAR_FRAME_H * PILLAR_DRAW_SCALE) / 2 - PILLAR_NUMBER_FONT_SIZE - 4
+			half_h := i32(PILLAR_FRAME_H * PILLAR_DRAW_SCALE) / 2
+			ty: i32
+			if p.pos.y < SCREEN_HEIGHT * 0.5 {
+				ty = i32(p.pos.y) + half_h + 4
+			} else {
+				ty = i32(p.pos.y) - half_h - PILLAR_NUMBER_FONT_SIZE - 4
+			}
 			rl.DrawText(num, tx + 1, ty + 1, PILLAR_NUMBER_FONT_SIZE, rl.BLACK)
 			rl.DrawText(num, tx, ty, PILLAR_NUMBER_FONT_SIZE, rl.YELLOW)
 		}

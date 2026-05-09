@@ -1,0 +1,21 @@
+{
+    "scenes": [
+        {
+            "scene_id": "l501",
+            "wave_id": [
+                { "id": "guardian", "when": "during", "once_completed": "nothing" }
+            ],
+            "lines": [
+
+                {
+                    "speaker": "captain_paprika",
+                    "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
+                    "text": "Aim for the discolored orb! You are our last hope, Zombi!"
+                }
+      
+            ]
+
+        }
+
+    ]
+}

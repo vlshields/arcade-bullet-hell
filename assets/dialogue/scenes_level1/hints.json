@@ -65,20 +65,51 @@
                {
                     "line_id": "zombi_line_02",
                     "input_hint": "gamepad_a/keeb_enter",
+                    "pauses_game": false,
                     "next": "paprika_hint_02"
                 },
                 {
                     "line_id": "paprika_hint_02",
                     "input_hint": "gamepad_a/keeb_enter",
+                    "pauses_game": false,
                     "next": "paprika_hint_03"
                 },
                 {
                     "line_id":"paprika_hint_03",
                     "input_hint":"gamepad_a/keeb_enter",
+                    "pauses_game": false,
+                    "next":"end"
+                }
+
+            ]
+        },
+        {
+            "scene_id": "hint_03",
+            "wave_id": [
+                { "id": "boss_golgatha", "when": "during", "once_completed": null }
+            ],
+            "lines": [
+
+                {
+                    "speaker": "captain_paprika",
+                    "line_id": "paprika_hint_04",
+                    "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
+                    "text": "Zombi, hold {attack} to charge up a giant beam! Press {confirm} to dismiss."
+                }
+       
+            ],
+            "can_fast_forward": false,
+            "actions": [
+   
+                {
+                    "line_id":"paprika_hint_04",
+                    "input_hint":"gamepad_a/keeb_enter",
+                    "pauses_game": false,
                     "next":"end"
                 }
  
             ]
         }
+
     ]
 }

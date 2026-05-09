@@ -1,0 +1,34 @@
+{
+    "scenes": [
+        {
+            "scene_id": "l201",
+            "wave_id": [
+                { "id": "01", "when": "before", "once_completed": "wave_begins" }
+            ],
+            "lines": [
+                {
+                    "speaker": "player_zombi",
+                    "dialogue_box_animation": "player_zombi_dialogue_icon.png",
+                    "text": "So what's the missin now, Captain?"
+                },
+                {
+                    "speaker": "captain_paprika",
+                    "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
+                    "text": "To find where Morgan is hiding, and eliminate him."
+                },
+                {
+                    "speaker": "player_zombi",
+                    "dialogue_box_animation": "player_zombi_dialogue_icon.png",
+                    "text": "Any Intel?"
+                },
+                {
+                    "speaker": "captain_paprika",
+                    "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
+                    "text": "Yeah, his hideout should be just up ahead..."
+                }
+            ]
+
+        }
+
+    ]
+}
