@@ -134,6 +134,7 @@ start_new_game :: proc() {
 
 	gs.dialogue.intro_done = false
 	gs.dialogue.wave2_intro_done = false
+	gs.dialogue.boss_intro_done = false
 	start_level1_intro(&gs.dialogue)
 	show_mission_title(&gs.mission_title, gs.level)
 
@@ -308,10 +309,15 @@ update :: proc() {
 		// the same as victory/transition for slow-time + gameplay gating.
 		boss_pausing := boss_phase_pausing(&gs.boss.boss)
 
+		// hint_03 (and any future "diegetic" hint) carries pauses_game:false in
+		// hints.json so its box overlays live gameplay without freezing the
+		// world. Other scenes keep the modal behavior.
+		dialogue_blocking := gs.dialogue.active && gs.dialogue.pauses_game
+
 		// Slow-time only ticks during gameplay; outside gameplay world_dt = dt so
 		// the background scroll and timers run at full speed.
 		world_dt := dt
-		if !gs.victory && !gs.transitioning && !boss_pausing && !gs.dialogue.active {
+		if !gs.victory && !gs.transitioning && !boss_pausing && !dialogue_blocking {
 			world_dt = update_slow_time(&gs.player, dt)
 		}
 
@@ -323,12 +329,15 @@ update :: proc() {
 			update_dialogue(&gs.dialogue, dt)
 		}
 
-		// Pre-wave hint scenes. Triggered before update_enemies sees the empty
-		// pool and spawns the next wave, so wave 2 grunts don't pop in mid-screen
-		// while the dialogue is up.
+		// Pre-wave hint scenes (wave_id when="before"). Fire before update_enemies
+		// sees the empty pool and spawns the next wave, so wave 2 grunts don't pop
+		// in mid-screen while the dialogue is up.
 		maybe_trigger_pre_wave_dialogue()
+		// hint_03 is wave_id when="during" — fires once Golgatha is on the field,
+		// overlaying live gameplay (pauses_game:false).
+		maybe_trigger_boss_dialogue()
 
-		if !gs.victory && !gs.transitioning && !gs.dialogue.active {
+		if !gs.victory && !gs.transitioning && !dialogue_blocking {
 			if boss_pausing {
 				update_boss(&gs.boss, &gs.bullets, &gs.sneaks, dt)
 			} else {
@@ -551,6 +560,26 @@ maybe_trigger_pre_wave_dialogue :: proc() {
 	start_level1_wave2_intro(&gs.dialogue)
 }
 
+@(private = "file")
+maybe_trigger_boss_dialogue :: proc() {
+	if gs.dialogue.active || gs.victory || gs.transitioning {
+		return
+	}
+	if gs.level != 1 || gs.dialogue.boss_intro_done {
+		return
+	}
+	if !gs.boss.boss.active || gs.boss.boss.kind != .Golgatha {
+		return
+	}
+	// Wait for the player's first hit on Golgatha before firing — by then the
+	// fight is genuinely underway (the wave_id when="during" semantic), not the
+	// initial entrance frame.
+	if gs.boss.boss.hp >= BOSS_MAX_HP {
+		return
+	}
+	start_level1_boss_intro(&gs.dialogue)
+}
+
 clear_world :: proc() {
 	for i in 0 ..< ENEMY_COUNT {
 		gs.enemies.enemies[i].active = false
@@ -708,42 +737,40 @@ upgrade_card_info :: proc(
 ) {
 	switch u {
 	case .Slow_Time:
-		// cue text alone is "HOLD"; draw_upgrade_card appends the slow-time
-		// icon (SHIFT / LT) so the prompt matches the player's active device.
-		return "SLOW TIME",
-			"HOLD",
-			"BENDS WORLD TO HALF SPEED",
-			"DRAINS STAMINA WHILE HELD",
+		return "SHRINK TIME",
+			"You can shrink spacetime",
+			"to half speed, effectively slowing",
+			"everything down. Drains stamina.",
 			rl.Color{80, 180, 255, 255}
 	case .Dash_Frenzy:
 		return "DASH FRENZY",
-			"ON DASH",
-			"FIRES 2 HOMING MISSILES (8 DMG)",
-			"+2 STAMINA PER DASH",
+			"Your dash now fires two homing",
+			"missles that deal 8 base damage",
+			"but cost additional stamina",
 			rl.Color{200, 110, 255, 255}
 	case .Rapid_Fire:
 		return "RAPID FIRE",
-			"HOLD ATTACK",
-			"REPLACES LASER WITH BULLETS",
-			"AUTOFIRE STRAIGHT UP",
+			"Your attack becomes a",
+			"rapid fire bullet launcher.",
+			"You can no longer use a charged beam.",
 			rl.Color{255, 80, 80, 255}
 	case .Beam_Blast:
-		return "BEAM BLAST",
-			"HOLD ATTACK",
-			"5-WAY LASER SPREAD (20 DEG)",
-			"RANGE REDUCED BY 50%",
+		return "SHOTGUN",
+			"Your attack launches 5",
+			"lasers in a spread pattern.",
+			"You have less range.",
 			rl.Color{255, 200, 80, 255}
 	case .Riposte:
 		return "RIPOSTE",
-			"ON DEFLECT",
-			"DEFLECTED BULLETS AUTO-TRACK",
-			"THE ENEMY THAT FIRED THEM",
+			"Bullets deflected by",
+			"your dash track the",
+			"enemy who fired them.",
 			rl.Color{160, 220, 255, 255}
 	case .Lucky_Shot:
 		return "LUCKY SHOT",
-			"ON DASH",
-			"YOU GAIN ONE MORE DASH MISSILE",
-			"AT NO EXTRA STAMINA COST",
+			"Your Dash Frenzy",
+			"launches 1 extra homing missle",
+			"at no extra stamina cost.",
 			rl.Color{255, 220, 120, 255}
 	}
 	return

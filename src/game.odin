@@ -587,7 +587,6 @@ on_enter_phase :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) {
 tick_phase :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool, dt: f32) {
 	#partial switch enemies.level2_phase {
 	case .Between_3Cyc_Sneaks:
-		// Detect cyclops-just-died edge to mint the next cyclops up to the target.
 		cur := count_cyclops_alive(sneaks)
 		if enemies.level2_prev_cyc_alive > 0 && cur == 0 {
 			enemies.level2_cyc_killed += 1
@@ -603,7 +602,6 @@ tick_phase :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool, dt: f32) {
 			force_spawn_sneak(sneaks)
 		}
 	case .Free_For_All:
-		// Endless weirdguy waves: respawn whenever the field is clear.
 		if !any_weirdguy_alive(enemies) {
 			spawn_weirdguys_for_phase(enemies)
 		}
@@ -620,8 +618,6 @@ phase_complete :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) -> bool {
 	case .Between_1Cyc_2Sneaks:
 		return count_cyclops_alive(sneaks) == 0 && count_sneaks_alive(sneaks) == 0
 	case .Wave2_WG_Sneaks:
-		// Wave clears when all weirdguys are gone; trailing sneaks carry over
-		// into the breather rather than blocking the transition.
 		return !any_weirdguy_alive(enemies)
 	case .Between_4Sneaks:
 		return count_sneaks_alive(sneaks) == 0 && count_cyclops_alive(sneaks) == 0
@@ -687,16 +683,6 @@ count_sneaks_alive :: proc(sneaks: ^Sneak_Pool) -> int {
 
 // #region Mission IV: Flank the Enemy Space Station
 
-// Level 4 pacing state machine.
-//
-//   Wave1_Grunts   level-1 grunt wave (faster fire interval — see LEVEL4_GRUNT_FIRE_INTERVAL)
-//   Wave2_WG       level-2 weirdguy wave
-//   Wave3_Grunts   level-1 grunt wave (faster fire)
-//   Wave4_Pillars  finale: 4 corner pillars with the kill-order puzzle (see pillar.odin)
-//
-// Each phase advances when its wave is fully cleared. After Wave4_Pillars
-// clears, level4_waves_complete reaches LEVEL4_WAVES_TO_VICTORY and main.odin
-// triggers the victory screen.
 
 Level4_Phase :: enum {
 	Wave1_Grunts,
@@ -763,8 +749,6 @@ advance_phase_l4 :: proc(enemies: ^Enemy_Pool) {
 	case .Wave3_Grunts:
 		next = .Wave4_Pillars
 	case .Wave4_Pillars:
-		// Terminal phase loops to itself; main.odin watches level4_waves_complete
-		// and triggers victory before update_level4_pacing runs again.
 		next = .Wave4_Pillars
 	}
 	enemies.level4_phase = next
@@ -776,10 +760,6 @@ advance_phase_l4 :: proc(enemies: ^Enemy_Pool) {
 
 // #region Pausing and Menus
 
-// Top-level menu shown before any gameplay starts (and again after the player
-// quits from pause). Uses the level-1 parallax as a live backdrop so the menu
-// doesn't feel static. Options/Controls sub-screens reuse the same widgets as
-// the pause menu via the shared draw_pause_options / draw_pause_controls procs.
 
 Main_Menu_Screen :: enum {
 	Main,
@@ -797,8 +777,6 @@ reset_main_menu :: proc(mm: ^Main_Menu) {
 	mm.cursor = 0
 }
 
-// Returns true when the player picked "BEGIN", which the caller turns into a
-// fresh-game start. "QUIT" is signaled via quit_app^ for desktop only.
 update_main_menu :: proc(
 	mm: ^Main_Menu,
 	begin_game: ^bool,
@@ -863,7 +841,6 @@ update_main_menu :: proc(
 }
 
 draw_main_menu :: proc(mm: ^Main_Menu, audio: ^Audio) {
-	// Slight darken so text reads cleanly over the parallax stars.
 	rl.DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, rl.Color{0, 0, 0, MAIN_MENU_OVERLAY_ALPHA})
 
 	title := cstring("Zombi")
@@ -915,7 +892,6 @@ reset_pause_menu :: proc(pm: ^Pause_Menu) {
 update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio: ^Audio) {
 	switch pm.screen {
 	case .Main:
-		// Toggle takes priority on Main so ESC / Start closes the menu.
 		if input_pause_toggle_pressed() {
 			paused^ = false
 			return
@@ -942,8 +918,6 @@ update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio:
 		}
 
 	case .Options:
-		// On submenus ESC / B steps back to Main rather than unpausing,
-		// so check back before toggle.
 		if input_menu_back_pressed() {
 			pm.screen = .Main
 			pm.cursor = 1
@@ -1043,12 +1017,10 @@ draw_pause_controls :: proc() {
 	y += PAUSE_BODY_LINE_GAP
 	draw_control_row(cstring("CONFIRM"), .Confirm, y)
 	y += PAUSE_BODY_LINE_GAP
-	draw_control_row(cstring("BACK"), .Back, y)
 
 	draw_return_hint()
 }
 
-// "[icon] RETURN" centered along the bottom of the controls screen.
 draw_return_hint :: proc() {
 	tail := cstring("RETURN")
 	icon_w := input_hint_width(.Confirm, HINT_ICON_SIZE)
@@ -1057,7 +1029,7 @@ draw_return_hint :: proc() {
 	x := (i32(SCREEN_WIDTH) - total_w) / 2
 	y: i32 = SCREEN_HEIGHT - 22
 	icon_y := y + (PAUSE_BODY_FONT_SIZE - HINT_ICON_SIZE) / 2
-	draw_input_hint(.Confirm, x, icon_y, HINT_ICON_SIZE)
+	draw_input_hint(.Back, x, icon_y, HINT_ICON_SIZE)
 	rl.DrawText(tail, x + icon_w + HINT_TEXT_GAP, y, PAUSE_BODY_FONT_SIZE, rl.WHITE)
 }
 
@@ -1236,19 +1208,21 @@ Dialogue_Line :: struct {
 	text:    string,
 }
 
-// Mirrors the schema in assets/dialogue/scenes_level1/hints.json. Field names
-// match the JSON keys exactly so json.unmarshal can populate them without tags.
-// Only the fields actually consumed at runtime are listed; unused fields in the
-// source file (wave_id, actions, can_fast_forward, etc.) are silently ignored.
 Dialogue_Source_Line :: struct {
 	speaker: string,
 	line_id: string,
 	text:    string,
 }
 
+Dialogue_Source_Action :: struct {
+	line_id:     string,
+	pauses_game: Maybe(bool),
+}
+
 Dialogue_Source_Scene :: struct {
 	scene_id: string,
 	lines:    []Dialogue_Source_Line,
+	actions:  []Dialogue_Source_Action,
 }
 
 Dialogue_Source :: struct {
@@ -1257,8 +1231,10 @@ Dialogue_Source :: struct {
 
 Dialogue :: struct {
 	active:           bool,
-	intro_done:       bool, // level-1 hint_01 fires once per run
-	wave2_intro_done: bool, // level-1 hint_02 fires once per run, before wave 2
+	pauses_game:      bool,
+	intro_done:       bool, 
+	wave2_intro_done: bool, 
+	boss_intro_done:  bool, 
 	lines:            [8]Dialogue_Line,
 	line_count:       int,
 	line_idx:         int,
@@ -1268,8 +1244,6 @@ Dialogue :: struct {
 	icon_frame_t:     f32,
 	paprika_tex:      rl.Texture2D,
 	zombi_tex:        rl.Texture2D,
-	// Parsed scene data from assets/dialogue/scenes_level1/hints.json. Owned for
-	// the lifetime of the game; text strings inside are referenced by d.lines.
 	level1_scenes:    Dialogue_Source,
 	level1_raw:       []byte,
 }
@@ -1326,9 +1300,6 @@ parse_speaker :: proc(s: string) -> (Dialogue_Speaker, bool) {
 	return .Paprika, false
 }
 
-// Loads a scene's lines into d.lines verbatim from the parsed JSON. Speaker
-// strings map to the enum; text is kept exactly as authored (no edits, no
-// substitutions). Returns the count loaded, or 0 if the scene is missing.
 @(private = "file")
 load_scene :: proc(d: ^Dialogue, scene_id: string) -> int {
 	scene, ok := find_scene(&d.level1_scenes, scene_id)
@@ -1351,6 +1322,14 @@ load_scene :: proc(d: ^Dialogue, scene_id: string) -> int {
 			text    = src_line.text,
 		}
 		n += 1
+	}
+
+	d.pauses_game = true
+	for action in scene.actions {
+		if pg, set := action.pauses_game.?; set && !pg {
+			d.pauses_game = false
+			break
+		}
 	}
 	return n
 }
@@ -1381,6 +1360,19 @@ start_level1_wave2_intro :: proc(d: ^Dialogue) {
 	d.wave2_intro_done = true
 }
 
+start_level1_boss_intro :: proc(d: ^Dialogue) {
+	if d.boss_intro_done {
+		return
+	}
+	n := load_scene(d, "hint_03")
+	if n == 0 {
+		return
+	}
+	d.line_count = n
+	dialogue_begin(d)
+	d.boss_intro_done = true
+}
+
 @(private = "file")
 dialogue_begin :: proc(d: ^Dialogue) {
 	d.line_idx = 0
@@ -1391,8 +1383,6 @@ dialogue_begin :: proc(d: ^Dialogue) {
 	d.active = true
 }
 
-// One atom = one byte of plain text OR one full {token}. Tokens reveal as a
-// single typewriter step rather than character-by-character.
 @(private = "file")
 line_atom_count :: proc(text: string) -> int {
 	n := 0
@@ -1513,10 +1503,6 @@ draw_dialogue :: proc(d: ^Dialogue) {
 	draw_dialogue_text(line.text, d.atoms_revealed, text_x0, text_y0, text_w, line_h)
 }
 
-// Recognized inline tokens in dialogue text:
-//   {attack} {dash} {shrink} {slow} {confirm}
-// Renders as a device-aware input-hint icon (kb vs gamepad). Unrecognized
-// tokens fall through and render literally so authoring mistakes are visible.
 @(private = "file")
 token_to_hint :: proc(token: string) -> (Input_Hint, bool) {
 	switch token {
@@ -1542,12 +1528,16 @@ draw_dialogue_text :: proc(text: string, atoms_revealed: int, x0, y0, w, line_h:
 	drawn := 0
 	space_w := rl.MeasureText(" ", font_size)
 
-	i := 0
-	for i < len(text) {
-		if drawn >= atoms_revealed {
-			break
-		}
+	// Draw a plain-text chunk with drop shadow, advancing cur_x.
+	draw_chunk :: proc(s: string, x, y, font_size: i32) -> i32 {
+		cstr := strings.clone_to_cstring(s, context.temp_allocator)
+		rl.DrawText(cstr, x + 1, y + 1, font_size, rl.BLACK)
+		rl.DrawText(cstr, x, y, font_size, rl.WHITE)
+		return rl.MeasureText(cstr, font_size)
+	}
 
+	i := 0
+	for i < len(text) && drawn < atoms_revealed {
 		ch := text[i]
 
 		if ch == '{' {
@@ -1567,20 +1557,14 @@ draw_dialogue_text :: proc(text: string, atoms_revealed: int, x0, y0, w, line_h:
 					drawn += 1
 					continue
 				}
-				// Unrecognized token — fall through and render the '{' literally
-				// so authoring mistakes are visible in-game.
 			}
 		}
-
-		// Word-wrap at spaces: peek to the next break and wrap if the upcoming
-		// word would overflow.
 		if ch == ' ' {
 			j := i + 1
 			for j < len(text) && text[j] != ' ' && text[j] != '{' {
 				j += 1
 			}
-			word := text[i + 1:j]
-			cword := strings.clone_to_cstring(word, context.temp_allocator)
+			cword := strings.clone_to_cstring(text[i + 1:j], context.temp_allocator)
 			word_w := rl.MeasureText(cword, font_size)
 			if cur_x + space_w + word_w > x0 + w {
 				cur_x = x0
@@ -1591,19 +1575,23 @@ draw_dialogue_text :: proc(text: string, atoms_revealed: int, x0, y0, w, line_h:
 			}
 		}
 
-		buf := make([]u8, 2, context.temp_allocator)
-		buf[0] = ch
-		buf[1] = 0
-		cstr := cstring(raw_data(buf))
-		// Drop shadow keeps text readable against bright parallax backgrounds.
-		rl.DrawText(cstr, cur_x + 1, cur_y + 1, font_size, rl.BLACK)
-		rl.DrawText(cstr, cur_x, cur_y, font_size, rl.WHITE)
-		cur_x += rl.MeasureText(cstr, font_size)
-		i += 1
-		drawn += 1
+		j := i
+		if text[j] == ' ' {
+			j += 1
+		}
+		for j < len(text) && text[j] != ' ' && text[j] != '{' {
+			j += 1
+		}
+		end := j
+		if drawn + (end - i) > atoms_revealed {
+			end = i + (atoms_revealed - drawn)
+		}
+		chunk := text[i:end]
+		cur_x += draw_chunk(chunk, cur_x, cur_y, font_size)
+		drawn += len(chunk)
+		i = end
 	}
 
-	// Continue prompt once the current line is fully revealed.
 	total := line_atom_count(text)
 	if atoms_revealed >= total {
 		blink := int(rl.GetTime() * 2) % 2 == 0

@@ -112,9 +112,7 @@ spawn_grunt_wave :: proc(pool: ^Enemy_Pool) {
 	}
 }
 
-// Wipes out any currently-alive enemies in the pool, then refills with a fresh
-// weirdguy wave. Used both by the original wave-respawn path and by the level-2
-// pacing manager when it enters a "weirdguys this beat" phase.
+
 spawn_weirdguys_for_phase :: proc(pool: ^Enemy_Pool) {
 	for i in 0 ..< ENEMY_COUNT {
 		pool.enemies[i].active = false
@@ -122,9 +120,6 @@ spawn_weirdguys_for_phase :: proc(pool: ^Enemy_Pool) {
 	spawn_weirdguy_wave(pool)
 }
 
-// Mirror of spawn_weirdguys_for_phase for level 4's grunt waves. spawn_grunt_wave
-// only writes the first GRUNT_WAVE_COUNT slots, so this clears trailing slots
-// from a prior weirdguy wave first to avoid leftover patrol enemies.
 spawn_grunts_for_phase :: proc(pool: ^Enemy_Pool) {
 	for i in 0 ..< ENEMY_COUNT {
 		pool.enemies[i].active = false
@@ -229,10 +224,6 @@ update_enemies :: proc(
 		}
 	}
 	if !any_alive && pool.level < 2 {
-		// Level 1 only: classic wave/boss flow. Level 2+ wave timing is owned
-		// entirely by update_level2_pacing (see level2.odin), which decides
-		// when to mint the next weirdguy wave or scripted minor-enemy beat.
-		// Suppress respawns while Golgatha is on the field; sneaks still flow.
 		if !boss.boss.active {
 			pool.waves_cleared += 1
 			if pool.waves_cleared == BOSS_TRIGGER_WAVE {
@@ -509,10 +500,6 @@ random_viewport_point :: proc() -> rl.Vector2 {
 	return {x, y}
 }
 
-// Effective active-minor-enemy cap for the current level. Level 1 keeps the
-// historical cap of 2 even though the underlying pool can hold more, so that
-// bumping SNEAK_MAX for the level-2 scripted phases doesn't accidentally
-// inflate level-1 difficulty.
 effective_sneak_cap :: proc(pool: ^Sneak_Pool) -> int {
 	if pool.level <= 1 {
 		return LEVEL1_SNEAK_CAP
@@ -520,13 +507,8 @@ effective_sneak_cap :: proc(pool: ^Sneak_Pool) -> int {
 	return SNEAK_MAX
 }
 
-// Kill-driven minor-enemy spawn funnel. Behavior depends on the current pacing
-// phase (see Level2_Phase). Level 1 retains the historical 50% sneak / 50% no-op
-// roll. Scripted level-2 phases do nothing here — they spawn from level2.odin
-// directly.
 try_spawn_sneak :: proc(pool: ^Sneak_Pool) {
 	if pool.level < 2 {
-		// Level 1: 50% sneak, 50% nothing (cyclops never spawn on level 1).
 		if rand.float32() < SNEAK_SPAWN_CHANCE {
 			force_spawn_sneak(pool)
 		}
@@ -542,7 +524,6 @@ try_spawn_sneak :: proc(pool: ^Sneak_Pool) {
 	     .Between_1Cyclops,
 	     .Between_1Cyc_2Sneaks,
 	     .Between_4Sneaks:
-		// Scripted-only phases: kills must not bleed extra spawns in.
 		return
 	case .Wave2_WG_Sneaks:
 		// "Weird guys and sneaks" — only sneaks here, no cyclops.
@@ -550,12 +531,10 @@ try_spawn_sneak :: proc(pool: ^Sneak_Pool) {
 			force_spawn_sneak(pool)
 		}
 	case .Between_3Cyc_Sneaks:
-		// Cyclops are spawned by the pacing manager; kills here may mint sneaks.
 		if rand.float32() < SNEAK_SPAWN_CHANCE {
 			force_spawn_sneak(pool)
 		}
 	case .Free_For_All:
-		// Original level-2 mix.
 		if rand.float32() < SNEAK_SPAWN_CHANCE {
 			force_spawn_sneak(pool)
 		} else {

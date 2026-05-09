@@ -585,7 +585,9 @@ fire_charge_beam :: proc(
 	score: ^int,
 ) {
 	damage := CHARGE_BEAM_BASE_DAMAGE + int(f32(CHARGE_BEAM_DAMAGE_BONUS) * charge)
-	half_width := b.thickness * 0.5 + CHARGE_BEAM_HIT_PAD
+	// Match the outer glow (drawn at thickness * 2 line width, so half-width = thickness)
+	// rather than the bright core, otherwise enemies clearly inside the visible beam are missed.
+	half_width := b.thickness + CHARGE_BEAM_HIT_PAD
 	pcx := b.start.x
 
 	for i in 0 ..< ENEMY_COUNT {
