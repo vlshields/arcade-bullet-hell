@@ -537,7 +537,7 @@ update_player_attack :: proc(
 
 	if input_attack_released() {
 		release_charge_beam(b)
-		fire_charge_beam(b, p.charge, enemies, sneaks, boss, pillars, packs, particles, score)
+		fire_charge_beam(b, p.charge, enemies, sneaks, boss, pillars, packs, particles, audio, score)
 		p.stamina -= CHARGE_BEAM_FULL_STAMINA_COST * p.charge
 		if p.stamina < 0 {
 			p.stamina = 0
@@ -582,6 +582,7 @@ fire_charge_beam :: proc(
 	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
+	audio: ^Audio,
 	score: ^Score_Stats,
 ) {
 	damage := CHARGE_BEAM_BASE_DAMAGE + int(f32(CHARGE_BEAM_DAMAGE_BONUS) * charge)
@@ -608,6 +609,13 @@ fire_charge_beam :: proc(
 			add_kill(score, .Charge)
 			try_spawn_sneak(sneaks)
 			try_drop_healthpack(packs, ec)
+			if e.kind == .WeirdGuy {
+				play_weirdguy_death_sfx(audio)
+			} else {
+				play_enemy_death_sfx(audio)
+			}
+		} else {
+			play_enemy_damage_sfx(audio)
 		}
 	}
 
@@ -629,6 +637,9 @@ fire_charge_beam :: proc(
 			add_kill(score, .Charge)
 			try_spawn_sneak(sneaks)
 			try_drop_healthpack(packs, sc)
+			play_enemy_death_sfx(audio)
+		} else {
+			play_enemy_damage_sfx(audio)
 		}
 	}
 
@@ -641,6 +652,9 @@ fire_charge_beam :: proc(
 				if killed {
 					add_kill(score, .Boss)
 					try_drop_healthpack(packs, bc)
+					play_enemy_death_sfx(audio)
+				} else {
+					play_enemy_damage_sfx(audio)
 				}
 			} else {
 				spawn_impact_particles(particles, bc, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
@@ -665,6 +679,9 @@ fire_charge_beam :: proc(
 				spawn_impact_particles(particles, o.pos, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 				if killed {
 					add_kill(score, .Guardian_Orb)
+					// Orb death cue handled by main.odin (Guardian voice line).
+				} else {
+					play_enemy_damage_sfx(audio)
 				}
 			} else {
 				spawn_impact_particles(particles, o.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
@@ -689,6 +706,9 @@ fire_charge_beam :: proc(
 			spawn_impact_particles(particles, pc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 			if killed {
 				add_kill(score, .Pillar)
+				play_enemy_death_sfx(audio)
+			} else {
+				play_enemy_damage_sfx(audio)
 			}
 		} else {
 			spawn_impact_particles(particles, pc, rl.WHITE, PILLAR_BLOCKED_PARTICLES)

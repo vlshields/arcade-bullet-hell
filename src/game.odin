@@ -13,11 +13,13 @@ import "core:strings"
 // #region Audio
 
 // One stream per track. Mapping:
+//   Main_Menu       — main_menu.ogg, the menu/options/controls screens
 //   Gameplay        — themesong2, levels 1 and 4
 //   Levels_2_3      — themesong3, levels 2 and 3
 //   Guardian        — themesong4, level 5 boss fight
 //   Final_Victory   — themesong1, only the post-final-boss screen
 Music_Track :: enum {
+	Main_Menu,
 	Gameplay,
 	Levels_2_3,
 	Guardian,
@@ -25,6 +27,7 @@ Music_Track :: enum {
 }
 
 MUSIC_TRACK_PATHS := [Music_Track]cstring {
+	.Main_Menu     = "assets/audio/soundtrack/main_menu.ogg",
 	.Gameplay      = "assets/audio/soundtrack/themesong2.ogg",
 	.Levels_2_3    = "assets/audio/soundtrack/themesong3_lvl2-lvl3.ogg",
 	.Guardian      = "assets/audio/soundtrack/themesong4_guardian.ogg",
@@ -38,17 +41,24 @@ Audio :: struct {
 	current_track:            Music_Track,
 	sfx_charged_beam:         rl.Sound,
 	sfx_charging_beam:        rl.Sound,
+	sfx_cyclops_attack:       rl.Sound,
 	sfx_dash:                 rl.Sound,
+	sfx_enemy_dies:           rl.Sound,
+	sfx_enemy_takes_damage:   rl.Sound,
 	sfx_golgotha_bullet_hell: rl.Sound,
 	sfx_golgotha_scream:      rl.Sound,
+	sfx_grunts_attack:        rl.Sound,
 	sfx_guardian_1:           rl.Sound,
 	sfx_guardian_2:           rl.Sound,
 	sfx_guardian_3:           rl.Sound,
 	sfx_laser:                rl.Sound,
+	sfx_morgan_chatter:       rl.Sound,
 	sfx_rapid_fire:           rl.Sound,
 	sfx_reflects_bullet:      rl.Sound,
 	sfx_shrink_bullets:       rl.Sound,
+	sfx_sneak_teleport:       rl.Sound,
 	sfx_takes_damage:         rl.Sound,
+	sfx_weird_guys_die:       rl.Sound,
 }
 
 init_audio :: proc(a: ^Audio) {
@@ -61,22 +71,29 @@ init_audio :: proc(a: ^Audio) {
 		a.music[t].looping = true
 		rl.SetMusicVolume(a.music[t], a.music_volume)
 	}
-	a.current_track = .Gameplay
+	a.current_track = .Main_Menu
 	rl.PlayMusicStream(a.music[a.current_track])
 
 	a.sfx_charged_beam = rl.LoadSound("assets/audio/sfx/player_charged_beam.wav")
 	a.sfx_charging_beam = rl.LoadSound("assets/audio/sfx/player_charging_beam.wav")
+	a.sfx_cyclops_attack = rl.LoadSound("assets/audio/sfx/cyclops_attack.wav")
 	a.sfx_dash = rl.LoadSound("assets/audio/sfx/player_dash.wav")
+	a.sfx_enemy_dies = rl.LoadSound("assets/audio/sfx/enemies_die_grunts_sneaks_cyclops_pillars_bosses.wav")
+	a.sfx_enemy_takes_damage = rl.LoadSound("assets/audio/sfx/enemies_take_damage.wav")
 	a.sfx_golgotha_bullet_hell = rl.LoadSound("assets/audio/golgotha_bullet_hell.wav")
 	a.sfx_golgotha_scream = rl.LoadSound("assets/audio/sfx/golgotha_scream.wav")
+	a.sfx_grunts_attack = rl.LoadSound("assets/audio/sfx/grunts_attack.wav")
 	a.sfx_guardian_1 = rl.LoadSound("assets/audio/sfx/guardian_sound1.wav")
 	a.sfx_guardian_2 = rl.LoadSound("assets/audio/sfx/guardian_sound2.wav")
 	a.sfx_guardian_3 = rl.LoadSound("assets/audio/sfx/guardian_sound3.wav")
 	a.sfx_laser = rl.LoadSound("assets/audio/sfx/player_laser.wav")
+	a.sfx_morgan_chatter = rl.LoadSound("assets/audio/sfx/morgan_chatter.wav")
 	a.sfx_rapid_fire = rl.LoadSound("assets/audio/sfx/player_rapid_fire.wav")
 	a.sfx_reflects_bullet = rl.LoadSound("assets/audio/sfx/player_reflects_bullet.wav")
 	a.sfx_shrink_bullets = rl.LoadSound("assets/audio/sfx/player_shrink_bullets.wav")
+	a.sfx_sneak_teleport = rl.LoadSound("assets/audio/sfx/sneaks_teleport_or_spawn.wav")
 	a.sfx_takes_damage = rl.LoadSound("assets/audio/sfx/player_takes_damage.wav")
+	a.sfx_weird_guys_die = rl.LoadSound("assets/audio/sfx/weird_guys_die.wav")
 
 	apply_sfx_volume(a)
 }
@@ -168,17 +185,24 @@ unload_audio :: proc(a: ^Audio) {
 	}
 	rl.UnloadSound(a.sfx_charged_beam)
 	rl.UnloadSound(a.sfx_charging_beam)
+	rl.UnloadSound(a.sfx_cyclops_attack)
 	rl.UnloadSound(a.sfx_dash)
+	rl.UnloadSound(a.sfx_enemy_dies)
+	rl.UnloadSound(a.sfx_enemy_takes_damage)
 	rl.UnloadSound(a.sfx_golgotha_bullet_hell)
 	rl.UnloadSound(a.sfx_golgotha_scream)
+	rl.UnloadSound(a.sfx_grunts_attack)
 	rl.UnloadSound(a.sfx_guardian_1)
 	rl.UnloadSound(a.sfx_guardian_2)
 	rl.UnloadSound(a.sfx_guardian_3)
 	rl.UnloadSound(a.sfx_laser)
+	rl.UnloadSound(a.sfx_morgan_chatter)
 	rl.UnloadSound(a.sfx_rapid_fire)
 	rl.UnloadSound(a.sfx_reflects_bullet)
 	rl.UnloadSound(a.sfx_shrink_bullets)
+	rl.UnloadSound(a.sfx_sneak_teleport)
 	rl.UnloadSound(a.sfx_takes_damage)
+	rl.UnloadSound(a.sfx_weird_guys_die)
 	rl.CloseAudioDevice()
 }
 
@@ -198,17 +222,24 @@ set_sfx_volume :: proc(a: ^Audio, v: f32) {
 apply_sfx_volume :: proc(a: ^Audio) {
 	rl.SetSoundVolume(a.sfx_charged_beam, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_charging_beam, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_cyclops_attack, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_dash, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_enemy_dies, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_enemy_takes_damage, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_golgotha_bullet_hell, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_golgotha_scream, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_grunts_attack, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_guardian_1, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_guardian_2, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_guardian_3, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_laser, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_morgan_chatter, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_rapid_fire, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_reflects_bullet, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_shrink_bullets, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_sneak_teleport, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_takes_damage, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_weird_guys_die, a.sfx_volume)
 }
 
 play_dash_sfx :: proc(a: ^Audio)          {rl.PlaySound(a.sfx_dash)}
@@ -218,6 +249,55 @@ play_reflect_sfx :: proc(a: ^Audio)       {rl.PlaySound(a.sfx_reflects_bullet)}
 play_shrink_bomb_sfx :: proc(a: ^Audio)   {rl.PlaySound(a.sfx_shrink_bullets)}
 play_player_damage_sfx :: proc(a: ^Audio) {rl.PlaySound(a.sfx_takes_damage)}
 play_golgotha_scream_sfx :: proc(a: ^Audio) {rl.PlaySound(a.sfx_golgotha_scream)}
+
+// Per-frame enemy event cues. PlaySound restarts the clip on every call, so
+// dozens of simultaneous grunts/cyclops would clip into a buzz — the
+// is-playing guard throttles each cue to "at most one instance at a time."
+// Death cues use the same guard: when a beam sweep kills several grunts in
+// one frame we get one death sound, not a stack.
+play_grunt_attack_sfx :: proc(a: ^Audio) {
+	if !rl.IsSoundPlaying(a.sfx_grunts_attack) {
+		rl.PlaySound(a.sfx_grunts_attack)
+	}
+}
+play_cyclops_attack_sfx :: proc(a: ^Audio) {
+	if !rl.IsSoundPlaying(a.sfx_cyclops_attack) {
+		rl.PlaySound(a.sfx_cyclops_attack)
+	}
+}
+play_sneak_teleport_sfx :: proc(a: ^Audio) {
+	if !rl.IsSoundPlaying(a.sfx_sneak_teleport) {
+		rl.PlaySound(a.sfx_sneak_teleport)
+	}
+}
+play_enemy_damage_sfx :: proc(a: ^Audio) {
+	if !rl.IsSoundPlaying(a.sfx_enemy_takes_damage) {
+		rl.PlaySound(a.sfx_enemy_takes_damage)
+	}
+}
+play_enemy_death_sfx :: proc(a: ^Audio) {
+	if !rl.IsSoundPlaying(a.sfx_enemy_dies) {
+		rl.PlaySound(a.sfx_enemy_dies)
+	}
+}
+play_weirdguy_death_sfx :: proc(a: ^Audio) {
+	if !rl.IsSoundPlaying(a.sfx_weird_guys_die) {
+		rl.PlaySound(a.sfx_weird_guys_die)
+	}
+}
+
+// Morgan ambient chatter — same retrigger-when-finished pattern as the
+// charging-beam cue. Tick every frame the boss is on the field, stop when
+// she leaves / dies / is between phases.
+tick_morgan_chatter_sfx :: proc(a: ^Audio) {
+	if !rl.IsSoundPlaying(a.sfx_morgan_chatter) {
+		rl.PlaySound(a.sfx_morgan_chatter)
+	}
+}
+
+stop_morgan_chatter_sfx :: proc(a: ^Audio) {
+	rl.StopSound(a.sfx_morgan_chatter)
+}
 
 // Guardian intro: sounds 1 and 2 layered together for a thick stinger when
 // the Ancient Guardian first appears.
@@ -541,9 +621,6 @@ update_healthpacks :: proc(pool: ^HealthPack_Pool, player: ^Player, dt: f32) {
 			continue
 		}
 		h.pos.y += HEALTHPACK_DRIFT_SPEED * dt
-		// Once the pack scrolls past the bottom edge (with a small slack so the
-		// pulsing glow finishes off-screen rather than popping mid-screen), the
-		// chance is gone.
 		if h.pos.y - HEALTHPACK_ARM > f32(SCREEN_HEIGHT) {
 			h.active = false
 			continue
@@ -572,11 +649,9 @@ draw_healthpacks :: proc(pool: ^HealthPack_Pool) {
 		arm: f32 = HEALTHPACK_ARM * pulse
 		thick: f32 = HEALTHPACK_THICK
 
-		// Soft green glow for visibility against busy backgrounds.
 		glow := rl.Color{120, 255, 140, 80}
 		rl.DrawCircleV(h.pos, arm * 1.6, glow)
 
-		// White backing cross for outline.
 		back_arm: f32 = arm + 1
 		back_thick: f32 = thick + 2
 		rl.DrawRectangleRec(
@@ -588,7 +663,6 @@ draw_healthpacks :: proc(pool: ^HealthPack_Pool) {
 			rl.WHITE,
 		)
 
-		// Inner green cross.
 		green := rl.Color{60, 220, 90, 255}
 		rl.DrawRectangleRec(
 			rl.Rectangle{h.pos.x - arm, h.pos.y - thick * 0.5, arm * 2, thick},
@@ -605,20 +679,6 @@ draw_healthpacks :: proc(pool: ^HealthPack_Pool) {
 
 // #region Mission II: Find Morgan's Hideout
 
-// Level 2 pacing state machine.
-//
-//   Wave1_WG_Only         weird-guy wave, no minor enemies
-//   Between_1Cyclops      1 cyclops, no weirdguys
-//   Between_1Cyc_2Sneaks  1 cyclops + 2 sneaks
-//   Wave2_WG_Sneaks       weirdguys + kill-driven sneak drops (no cyclops)
-//   Between_4Sneaks       4 sneaks, nothing else
-//   Between_3Cyc_Sneaks   3 cyclops sequentially while sneaks stream
-//   Free_For_All          original level-2 mix; loops indefinitely
-//
-// Each "between" beat exists to give the player a clearer breather/setpiece
-// after a wave instead of the prior wall-to-wall weirdguy spam. The Free_For_All
-// terminal phase preserves the original endless-wave behavior so runs don't
-// just stop after the scripted sequence.
 
 Level2_Phase :: enum {
 	Wave1_WG_Only,
@@ -645,10 +705,6 @@ update_level2_pacing :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool, dt: f32)
 		return
 	}
 
-	// Phases keep advancing past the win count (Free_For_All self-loops, and
-	// Between_3Cyc_Sneaks re-spawns cyclopses on entry). Without this gate,
-	// on_enter_phase / tick_phase fire during VICTORY_DELAY and seed enemies
-	// that flash on screen before clear_world. Mirrors update_level4_pacing.
 	if enemies.level2_waves_complete >= LEVEL2_WAVES_TO_VICTORY {
 		return
 	}
@@ -1640,7 +1696,6 @@ update_dialogue :: proc(d: ^Dialogue, dt: f32) {
 	line := d.lines[d.line_idx]
 	total := line_atom_count(line.text)
 
-	// Confirm: first press skips typewriter to end; second advances line.
 	if input_confirm_pressed() {
 		if d.atoms_revealed < total {
 			d.atoms_revealed = total
@@ -1708,7 +1763,6 @@ draw_dialogue :: proc(d: ^Dialogue) {
 	}
 	rl.DrawTexturePro(tex, src, dst, {0, 0}, 0, rl.WHITE)
 
-	// Speaker name above the box.
 	nx: i32 = box_x + DIALOGUE_BOX_PAD
 	ny: i32 = box_y - DIALOGUE_NAME_FONT_SIZE - 3
 	rl.DrawText(name, nx + 1, ny + 1, DIALOGUE_NAME_FONT_SIZE, rl.BLACK)
@@ -1835,6 +1889,74 @@ draw_dialogue_text :: proc(text: string, atoms_revealed: int, x0, y0, w, line_h:
 		drawn += len(chunk)
 		i = end
 	}
+}
+
+// #endregion
+
+// #region Scoring System
+Score_Kind :: enum {
+	Laser,
+	Charge,
+	Reflect,
+	Rapid_Fire,
+	Missile,
+	Boss,
+	Pillar,
+	Guardian_Orb,
+}
+
+Score_Stats :: struct {
+	total: int,
+	kills: [Score_Kind]int,
+}
+
+score_kind_points :: proc(k: Score_Kind) -> int {
+	switch k {
+	case .Laser:
+		return SCORE_KILL_LASER
+	case .Charge:
+		return SCORE_KILL_CHARGE
+	case .Reflect:
+		return SCORE_KILL_REFLECT
+	case .Rapid_Fire:
+		return SCORE_KILL_RAPID
+	case .Missile:
+		return SCORE_KILL_MISSILE
+	case .Boss:
+		return SCORE_KILL_BOSS
+	case .Pillar:
+		return PILLAR_KILL_SCORE
+	case .Guardian_Orb:
+		return GUARDIAN_ORB_KILL_SCORE
+	}
+	return 0
+}
+
+score_kind_label :: proc(k: Score_Kind) -> cstring {
+	switch k {
+	case .Laser:
+		return "LASER KILLS"
+	case .Charge:
+		return "CHARGE BEAM KILLS"
+	case .Reflect:
+		return "DASH REFLECT KILLS"
+	case .Rapid_Fire:
+		return "RAPID FIRE KILLS"
+	case .Missile:
+		return "HOMING MISSILE KILLS"
+	case .Boss:
+		return "BOSS KILLS"
+	case .Pillar:
+		return "PILLAR KILLS"
+	case .Guardian_Orb:
+		return "GUARDIAN ORB KILLS"
+	}
+	return ""
+}
+
+add_kill :: proc(s: ^Score_Stats, k: Score_Kind) {
+	s.kills[k] += 1
+	s.total += score_kind_points(k)
 }
 
 // #endregion

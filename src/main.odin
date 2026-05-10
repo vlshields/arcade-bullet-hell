@@ -174,7 +174,8 @@ return_to_main_menu :: proc() {
 	stop_rapid_fire_sfx(&gs.audio)
 	stop_charging_beam_sfx(&gs.audio)
 	stop_golgotha_bullet_hell_sfx(&gs.audio)
-	play_track(&gs.audio, .Gameplay)
+	stop_morgan_chatter_sfx(&gs.audio)
+	play_track(&gs.audio, .Main_Menu)
 	set_background_level(&gs.background, 1)
 	gs.in_menu = true
 	reset_main_menu(&gs.main_menu)
@@ -349,9 +350,8 @@ update :: proc() {
 		// the same as victory/transition for slow-time + gameplay gating.
 		boss_pausing := boss_phase_pausing(&gs.boss.boss)
 
-		// hint_03 (and any future "diegetic" hint) carries pauses_game:false in
-		// hints.json so its box overlays live gameplay without freezing the
-		// world. Other scenes keep the modal behavior.
+		// Hints flagged pauses_game:false (hint_02, l402, l501, hint_03) overlay
+		// live gameplay without freezing the world; modal scenes keep the freeze.
 		dialogue_blocking := gs.dialogue.active && gs.dialogue.pauses_game
 
 		// Slow-time only ticks during gameplay; outside gameplay world_dt = dt so
@@ -379,13 +379,13 @@ update :: proc() {
 		}
 
 		// Pre-wave hint scenes (wave_id when="before"). Fire before update_enemies
-		// sees the empty pool and spawns the next wave, so wave 2 grunts don't pop
-		// in mid-screen while the dialogue is up.
+		// sees the empty pool and spawns the next wave, so wave 2 grunts (or the
+		// Golgatha boss) don't pop in mid-screen while the dialogue is up.
 		maybe_trigger_pre_wave_dialogue()
+		maybe_trigger_pre_boss_dialogue()
 		maybe_trigger_l4_pillars_dialogue()
-		// hint_03 / l501 are wave_id when="during" — fire once the boss is on the
-		// field, overlaying live gameplay (non-pausing).
-		maybe_trigger_boss_dialogue()
+		// l501 is wave_id when="during" — fires once the boss is on the field,
+		// overlaying live gameplay (non-pausing).
 		maybe_trigger_l5_guardian_dialogue()
 
 		// Block kill-drop sneak/cyclops spawns during VICTORY_DELAY so the
@@ -408,10 +408,11 @@ update :: proc() {
 					&gs.boss,
 					&gs.bullets,
 					&gs.player,
+					&gs.audio,
 					world_dt,
 					gs.dialogue.active,
 				)
-				update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, world_dt)
+				update_sneaks(&gs.sneaks, &gs.player, &gs.bullets, &gs.audio, world_dt)
 				update_boss(&gs.boss, &gs.bullets, &gs.sneaks, world_dt)
 				update_pillars(&gs.pillars, &gs.bullets, world_dt)
 				update_player_attack(
@@ -438,6 +439,7 @@ update :: proc() {
 					&gs.healthpacks,
 					&gs.particles,
 					&gs.score,
+					&gs.audio,
 				)
 				update_missiles(
 					&gs.missiles,
@@ -448,6 +450,7 @@ update :: proc() {
 					&gs.healthpacks,
 					&gs.particles,
 					&gs.score,
+					&gs.audio,
 					dt,
 				)
 				update_particles(&gs.particles, world_dt)
@@ -462,8 +465,17 @@ update :: proc() {
 					&gs.healthpacks,
 					&gs.particles,
 					&gs.score,
+					&gs.audio,
 				)
 				update_healthpacks(&gs.healthpacks, &gs.player, world_dt)
+			}
+
+			// Drain the sneak teleport/spawn edge flag once per frame so a
+			// burst (kill drops + scheduled teleports) collapses to a single
+			// cue instead of layering instances.
+			if gs.sneaks.teleport_or_spawn_event {
+				play_sneak_teleport_sfx(&gs.audio)
+				gs.sneaks.teleport_or_spawn_event = false
 			}
 		}
 	}
@@ -483,6 +495,23 @@ update :: proc() {
 		tick_golgotha_bullet_hell_sfx(&gs.audio)
 	} else {
 		stop_golgotha_bullet_hell_sfx(&gs.audio)
+	}
+
+	// Morgan ambient chatter mirrors the Golgatha loop — retrigger every frame
+	// the boss is on the field, stop on pause / victory / transition / death /
+	// inter-phase pause so the cue lines up with what the player sees.
+	morgan_chattering :=
+		gs.boss.boss.active &&
+		gs.boss.boss.kind == .Morgan &&
+		!gs.boss.boss.dying &&
+		!boss_phase_pausing(&gs.boss.boss) &&
+		!gs.paused &&
+		!gs.victory &&
+		!gs.transitioning
+	if morgan_chattering {
+		tick_morgan_chatter_sfx(&gs.audio)
+	} else {
+		stop_morgan_chatter_sfx(&gs.audio)
 	}
 
 	// Ancient Guardian audio hooks: layered intro stinger on fight start, plus
@@ -650,21 +679,27 @@ maybe_trigger_pre_wave_dialogue :: proc() {
 }
 
 @(private = "file")
-maybe_trigger_boss_dialogue :: proc() {
+maybe_trigger_pre_boss_dialogue :: proc() {
 	if gs.dialogue.active || gs.victory || gs.transitioning {
 		return
 	}
 	if gs.level != 1 || gs.dialogue.boss_intro_done {
 		return
 	}
-	if !gs.boss.boss.active || gs.boss.boss.kind != .Golgatha {
+	if gs.boss.boss.active || gs.boss.boss.defeated {
 		return
 	}
-	// Wait for the player's first hit on Golgatha before firing — by then the
-	// fight is genuinely underway (the wave_id when="during" semantic), not the
-	// initial entrance frame.
-	if gs.boss.boss.hp >= BOSS_MAX_HP {
+	// Mirrors hint_02 wave-2 trigger: fires the frame after the final grunt
+	// wave is cleared but before update_enemies bumps waves_cleared and calls
+	// spawn_boss. block_next_wave (= gs.dialogue.active) holds the spawn off
+	// until the player dismisses the line.
+	if gs.enemies.waves_cleared != BOSS_TRIGGER_WAVE - 1 {
 		return
+	}
+	for i in 0 ..< ENEMY_COUNT {
+		if gs.enemies.enemies[i].active {
+			return
+		}
 	}
 	start_level1_boss_intro(&gs.dialogue)
 }

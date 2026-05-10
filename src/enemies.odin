@@ -214,6 +214,7 @@ update_enemies :: proc(
 	boss: ^Boss_Pool,
 	bullets: ^Bullet_Pool,
 	player: ^Player,
+	audio: ^Audio,
 	dt: f32,
 	block_next_wave: bool,
 ) {
@@ -261,7 +262,7 @@ update_enemies :: proc(
 		}
 		switch e.kind {
 		case .Grunt:
-			update_grunt_one(e, i, pool.fire_interval, bullets, dt)
+			update_grunt_one(e, i, pool.fire_interval, bullets, audio, dt)
 		case .WeirdGuy:
 			update_weirdguy_one(e, i, player_center, bullets, dt)
 		}
@@ -269,7 +270,7 @@ update_enemies :: proc(
 }
 
 @(private = "file")
-update_grunt_one :: proc(e: ^Enemy, index: int, fire_interval: f32, bullets: ^Bullet_Pool, dt: f32) {
+update_grunt_one :: proc(e: ^Enemy, index: int, fire_interval: f32, bullets: ^Bullet_Pool, audio: ^Audio, dt: f32) {
 	d := &e.data.(Grunt_Data)
 
 	d.angle += ENEMY_ORBIT_SPEED * dt
@@ -308,6 +309,7 @@ update_grunt_one :: proc(e: ^Enemy, index: int, fire_interval: f32, bullets: ^Bu
 			}
 			spawn_bullet(bullets, e.pos, vel, rl.RED, .Enemy, .Enemy, index)
 		}
+		play_grunt_attack_sfx(audio)
 	}
 }
 
@@ -462,6 +464,10 @@ Sneak_Pool :: struct {
 	// VICTORY_DELAY window so leftover enemy kills don't seed new sneaks /
 	// cyclops that would flash on screen before clear_world fires.
 	spawns_blocked:     bool,
+	// Edge flag set whenever a sneak teleports OR a sneak/cyclops spawns.
+	// main.odin drains it once per frame and plays sfx_sneak_teleport. Single
+	// flag (not counter) so simultaneous events collapse into one cue.
+	teleport_or_spawn_event: bool,
 }
 
 init_sneaks :: proc(pool: ^Sneak_Pool) {
@@ -587,6 +593,7 @@ force_spawn_sneak :: proc(pool: ^Sneak_Pool) {
 			teleport_timer = SNEAK_TELEPORT_INTERVAL,
 		},
 	}
+	pool.teleport_or_spawn_event = true
 }
 
 // Forced cyclops spawn. Bypasses the level guard (caller is responsible for
@@ -627,9 +634,10 @@ force_spawn_cyclops :: proc(pool: ^Sneak_Pool) {
 			frame_time = 0,
 		},
 	}
+	pool.teleport_or_spawn_event = true
 }
 
-update_sneaks :: proc(pool: ^Sneak_Pool, player: ^Player, bullets: ^Bullet_Pool, dt: f32) {
+update_sneaks :: proc(pool: ^Sneak_Pool, player: ^Player, bullets: ^Bullet_Pool, audio: ^Audio, dt: f32) {
 	pcx := player.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
 	pcy := player.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
 	player_center := rl.Vector2{pcx, pcy}
@@ -649,15 +657,15 @@ update_sneaks :: proc(pool: ^Sneak_Pool, player: ^Player, bullets: ^Bullet_Pool,
 
 		switch s.kind {
 		case .Sneak:
-			update_sneak_one(s, i, player_center, bullets, dt)
+			update_sneak_one(pool, s, i, player_center, bullets, dt)
 		case .Cyclops:
-			update_cyclops_one(s, i, player_center, bullets, dt)
+			update_cyclops_one(s, i, player_center, bullets, audio, dt)
 		}
 	}
 }
 
 @(private = "file")
-update_sneak_one :: proc(s: ^Sneak, index: int, player_center: rl.Vector2, bullets: ^Bullet_Pool, dt: f32) {
+update_sneak_one :: proc(pool: ^Sneak_Pool, s: ^Sneak, index: int, player_center: rl.Vector2, bullets: ^Bullet_Pool, dt: f32) {
 	d := &s.data.(Sneak_Data)
 
 	d.sway_phase += SNEAK_SWAY_FREQ * math.TAU * dt
@@ -673,6 +681,7 @@ update_sneak_one :: proc(s: ^Sneak, index: int, player_center: rl.Vector2, bulle
 		d.anchor = random_viewport_point()
 		d.sway_phase = rand.float32() * math.TAU
 		s.pos = d.anchor
+		pool.teleport_or_spawn_event = true
 	}
 
 	s.fire_timer += dt
@@ -704,6 +713,7 @@ update_cyclops_one :: proc(
 	index: int,
 	player_center: rl.Vector2,
 	bullets: ^Bullet_Pool,
+	audio: ^Audio,
 	dt: f32,
 ) {
 	d := &s.data.(Cyclops_Data)
@@ -741,12 +751,14 @@ update_cyclops_one :: proc(
 
 	color := rl.Color{0xff, 0xcc, 0x99, 0xff}
 	s.fire_timer += dt
+	fired := false
 
 	switch d.pattern {
 	case 0:
 		// Aimed fan at the player.
 		for s.fire_timer >= CYCLOPS_AIMED_INTERVAL {
 			s.fire_timer -= CYCLOPS_AIMED_INTERVAL
+			fired = true
 			to_player := player_center - s.pos
 			if rl.Vector2Length(to_player) < 0.001 {
 				to_player = {0, 1}
@@ -768,6 +780,7 @@ update_cyclops_one :: proc(
 		// Full ring — player must dodge into a gap.
 		for s.fire_timer >= CYCLOPS_RING_INTERVAL {
 			s.fire_timer -= CYCLOPS_RING_INTERVAL
+			fired = true
 			step := math.TAU / f32(CYCLOPS_RING_BULLETS)
 			for b in 0 ..< CYCLOPS_RING_BULLETS {
 				angle := f32(b) * step
@@ -784,6 +797,7 @@ update_cyclops_one :: proc(
 		inc_rad := f32(CYCLOPS_SPIRAL_INC_DEG) * math.PI / 180.0
 		for s.fire_timer >= CYCLOPS_SPIRAL_INTERVAL {
 			s.fire_timer -= CYCLOPS_SPIRAL_INTERVAL
+			fired = true
 			for arm in 0 ..< CYCLOPS_SPIRAL_ARMS {
 				angle := d.spiral_angle + f32(arm) * arm_step
 				vel := rl.Vector2 {
@@ -797,6 +811,10 @@ update_cyclops_one :: proc(
 				d.spiral_angle -= math.TAU
 			}
 		}
+	}
+
+	if fired {
+		play_cyclops_attack_sfx(audio)
 	}
 }
 
