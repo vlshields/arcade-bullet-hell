@@ -39,6 +39,10 @@ Audio :: struct {
 	sfx_charging_beam:        rl.Sound,
 	sfx_dash:                 rl.Sound,
 	sfx_golgotha_bullet_hell: rl.Sound,
+	sfx_golgotha_scream:      rl.Sound,
+	sfx_guardian_1:           rl.Sound,
+	sfx_guardian_2:           rl.Sound,
+	sfx_guardian_3:           rl.Sound,
 	sfx_laser:                rl.Sound,
 	sfx_rapid_fire:           rl.Sound,
 	sfx_reflects_bullet:      rl.Sound,
@@ -63,6 +67,10 @@ init_audio :: proc(a: ^Audio) {
 	a.sfx_charging_beam = rl.LoadSound("assets/audio/sfx/player_charging_beam.wav")
 	a.sfx_dash = rl.LoadSound("assets/audio/sfx/player_dash.wav")
 	a.sfx_golgotha_bullet_hell = rl.LoadSound("assets/audio/golgotha_bullet_hell.wav")
+	a.sfx_golgotha_scream = rl.LoadSound("assets/audio/sfx/golgotha_scream.wav")
+	a.sfx_guardian_1 = rl.LoadSound("assets/audio/sfx/guardian_sound1.wav")
+	a.sfx_guardian_2 = rl.LoadSound("assets/audio/sfx/guardian_sound2.wav")
+	a.sfx_guardian_3 = rl.LoadSound("assets/audio/sfx/guardian_sound3.wav")
 	a.sfx_laser = rl.LoadSound("assets/audio/sfx/player_laser.wav")
 	a.sfx_rapid_fire = rl.LoadSound("assets/audio/sfx/player_rapid_fire.wav")
 	a.sfx_reflects_bullet = rl.LoadSound("assets/audio/sfx/player_reflects_bullet.wav")
@@ -107,6 +115,10 @@ unload_audio :: proc(a: ^Audio) {
 	rl.UnloadSound(a.sfx_charging_beam)
 	rl.UnloadSound(a.sfx_dash)
 	rl.UnloadSound(a.sfx_golgotha_bullet_hell)
+	rl.UnloadSound(a.sfx_golgotha_scream)
+	rl.UnloadSound(a.sfx_guardian_1)
+	rl.UnloadSound(a.sfx_guardian_2)
+	rl.UnloadSound(a.sfx_guardian_3)
 	rl.UnloadSound(a.sfx_laser)
 	rl.UnloadSound(a.sfx_rapid_fire)
 	rl.UnloadSound(a.sfx_reflects_bullet)
@@ -133,6 +145,10 @@ apply_sfx_volume :: proc(a: ^Audio) {
 	rl.SetSoundVolume(a.sfx_charging_beam, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_dash, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_golgotha_bullet_hell, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_golgotha_scream, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_guardian_1, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_guardian_2, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_guardian_3, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_laser, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_rapid_fire, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_reflects_bullet, a.sfx_volume)
@@ -146,6 +162,27 @@ play_charged_beam_sfx :: proc(a: ^Audio)  {rl.PlaySound(a.sfx_charged_beam)}
 play_reflect_sfx :: proc(a: ^Audio)       {rl.PlaySound(a.sfx_reflects_bullet)}
 play_shrink_bomb_sfx :: proc(a: ^Audio)   {rl.PlaySound(a.sfx_shrink_bullets)}
 play_player_damage_sfx :: proc(a: ^Audio) {rl.PlaySound(a.sfx_takes_damage)}
+play_golgotha_scream_sfx :: proc(a: ^Audio) {rl.PlaySound(a.sfx_golgotha_scream)}
+
+// Guardian intro: sounds 1 and 2 layered together for a thick stinger when
+// the Ancient Guardian first appears.
+play_guardian_intro_sfx :: proc(a: ^Audio) {
+	rl.PlaySound(a.sfx_guardian_1)
+	rl.PlaySound(a.sfx_guardian_2)
+}
+
+// One random guardian voice cue per orb death; cycles through 1/2/3 so kills
+// feel reactive rather than canned.
+play_guardian_orb_death_sfx :: proc(a: ^Audio) {
+	switch rand.int31() % 3 {
+	case 0:
+		rl.PlaySound(a.sfx_guardian_1)
+	case 1:
+		rl.PlaySound(a.sfx_guardian_2)
+	case:
+		rl.PlaySound(a.sfx_guardian_3)
+	}
+}
 
 // Charging-beam cue is held by retriggering a short clip whenever the previous
 // instance has finished. Call every frame while the player is charging, and
@@ -226,9 +263,11 @@ bg_path :: proc(level: int, i: int) -> cstring {
 	if level <= 1 {
 		return fmt.ctprintf("assets/parallaxbg%d.png", i)
 	}
-	if level == 3 || level == 5 {
-		// Level 5 reuses the Morgan backdrop + wave shader for the Ancient
-		// Guardian fight. Different image, same effect.
+	if level == 3 {
+		return "assets/Morgan_Fight_Background.png"
+	}
+	if level == 5 {
+		// Ancient Guardian fight reuses the wave shader with its own backdrop.
 		return "assets/level3_bg.png"
 	}
 	// Level 4 reuses the level-2 parallax stack for now.
@@ -1575,6 +1614,30 @@ draw_dialogue :: proc(d: ^Dialogue) {
 	line_h: i32 = DIALOGUE_TEXT_FONT_SIZE + DIALOGUE_TEXT_LINE_GAP
 
 	draw_dialogue_text(line.text, d.atoms_revealed, text_x0, text_y0, text_w, line_h)
+
+	if d.atoms_revealed >= line_atom_count(line.text) {
+		draw_dialogue_confirm_prompt(box_x, box_y)
+	}
+}
+
+@(private = "file")
+draw_dialogue_confirm_prompt :: proc(box_x, box_y: i32) {
+	if int(rl.GetTime() * 2) % 2 != 0 {
+		return
+	}
+	font_size: i32 = DIALOGUE_TEXT_FONT_SIZE
+	icon_size: i32 = DIALOGUE_INLINE_HINT_SIZE
+	prompt: cstring = "Press"
+	prompt_w := rl.MeasureText(prompt, font_size)
+	icon_w := input_hint_width(.Confirm, icon_size)
+	gap: i32 = 4
+	total_w := prompt_w + gap + icon_w
+	px := box_x + DIALOGUE_BOX_W - DIALOGUE_BOX_PAD - total_w
+	py := box_y + DIALOGUE_BOX_H - DIALOGUE_BOX_PAD - font_size
+	rl.DrawText(prompt, px + 1, py + 1, font_size, rl.BLACK)
+	rl.DrawText(prompt, px, py, font_size, rl.WHITE)
+	icon_y := py + (font_size - icon_size) / 2
+	_ = draw_input_hint(.Confirm, px + prompt_w + gap, icon_y, icon_size)
 }
 
 @(private = "file")
@@ -1664,21 +1727,6 @@ draw_dialogue_text :: proc(text: string, atoms_revealed: int, x0, y0, w, line_h:
 		cur_x += draw_chunk(chunk, cur_x, cur_y, font_size)
 		drawn += len(chunk)
 		i = end
-	}
-
-	total := line_atom_count(text)
-	if atoms_revealed >= total {
-		blink := int(rl.GetTime() * 2) % 2 == 0
-		if blink {
-			tri_x := x0 + w - 8
-			tri_y := y0 + line_h * 2 + 2
-			rl.DrawTriangle(
-				{f32(tri_x), f32(tri_y)},
-				{f32(tri_x + 6), f32(tri_y)},
-				{f32(tri_x + 3), f32(tri_y + 5)},
-				rl.Color{220, 220, 220, 255},
-			)
-		}
 	}
 }
 

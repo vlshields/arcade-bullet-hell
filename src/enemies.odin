@@ -227,7 +227,10 @@ update_enemies :: proc(
 	// block_next_wave defers the level-1 between-wave hand-off so a non-pausing
 	// dialogue can play in the empty arena without wave 2 spawning underneath it.
 	if !any_alive && pool.level < 2 && !block_next_wave {
-		if !boss.boss.active {
+		// Post-defeat: the victory window holds gameplay live for VICTORY_DELAY
+		// so the kill registers; without this gate a fresh grunt wave spawns
+		// into that window and flashes on screen before clear_world fires.
+		if !boss.boss.active && !boss.boss.defeated {
 			pool.waves_cleared += 1
 			if pool.waves_cleared == BOSS_TRIGGER_WAVE {
 				spawn_boss(boss)
@@ -1269,6 +1272,22 @@ Boss :: struct {
 	// phases. > 0 means the world is frozen and the HP bar is refilling 0 ->
 	// MORGAN_PHASE_HP. Defeat does NOT trigger a transition.
 	phase_transition_t: f32,
+	// One-shot scream cue: Golgatha plays sfx_golgotha_scream the first frame
+	// after spawn. Reset in spawn_boss so a fresh fight re-triggers it.
+	scream_played: bool,
+	// Ancient Guardian audio hooks. intro_played gates a one-shot stinger on
+	// fight start. orb_just_died is a single-frame edge set inside
+	// damage_guardian_orb when an orb hits 0; main.odin drains it to play a
+	// random voice cue. A bool (not counter) is fine — back-to-back kills in
+	// the same frame collapsing into one cue is desirable, not a bug.
+	intro_played:   bool,
+	orb_just_died:  bool,
+	// Death animation flag (Morgan + Golgatha). While dying, normal update is
+	// skipped, the boss is invulnerable, and `frame`/`frame_time` advance
+	// through the kind-specific death sprite. When the last frame plays out,
+	// active flips false and defeated flips true so the existing
+	// victory_pending flow kicks in. Ancient Guardian doesn't use this.
+	dying: bool,
 	// Ancient Guardian state. orbs orbit the boss at orbit_phase rad; only
 	// vulnerable_orb_idx takes damage. While any orb is active the boss itself
 	// is invulnerable. When all 6 orbs die, in_window flips true for
@@ -1290,18 +1309,24 @@ boss_phase_pausing :: proc(b: ^Boss) -> bool {
 }
 
 Boss_Pool :: struct {
-	boss:            Boss,
-	tex:             rl.Texture2D,
-	morgan_idle_tex: rl.Texture2D,
-	guardian_tex:    rl.Texture2D,
-	flash_shader:    rl.Shader,
+	boss:               Boss,
+	tex:                rl.Texture2D,
+	golgatha_death_tex: rl.Texture2D,
+	morgan_idle_tex:    rl.Texture2D,
+	morgan_death_tex:   rl.Texture2D,
+	guardian_tex:       rl.Texture2D,
+	flash_shader:       rl.Shader,
 }
 
 init_boss :: proc(pool: ^Boss_Pool) {
 	pool.tex = rl.LoadTexture("assets/sprites/enemy_boss1_move.png")
 	rl.SetTextureFilter(pool.tex, .POINT)
+	pool.golgatha_death_tex = rl.LoadTexture("assets/sprites/Boss_Golgotha_Dies.png")
+	rl.SetTextureFilter(pool.golgatha_death_tex, .POINT)
 	pool.morgan_idle_tex = rl.LoadTexture("assets/sprites/boss_morgan_idle.png")
 	rl.SetTextureFilter(pool.morgan_idle_tex, .POINT)
+	pool.morgan_death_tex = rl.LoadTexture("assets/sprites/boss_morgan_dies.png")
+	rl.SetTextureFilter(pool.morgan_death_tex, .POINT)
 	pool.guardian_tex = rl.LoadTexture("assets/sprites/final_boss_ancient_guardian.png")
 	rl.SetTextureFilter(pool.guardian_tex, .POINT)
 	pool.flash_shader = load_flash_shader()
@@ -1310,7 +1335,9 @@ init_boss :: proc(pool: ^Boss_Pool) {
 
 unload_boss :: proc(pool: ^Boss_Pool) {
 	rl.UnloadTexture(pool.tex)
+	rl.UnloadTexture(pool.golgatha_death_tex)
 	rl.UnloadTexture(pool.morgan_idle_tex)
+	rl.UnloadTexture(pool.morgan_death_tex)
 	rl.UnloadTexture(pool.guardian_tex)
 	rl.UnloadShader(pool.flash_shader)
 }
@@ -1330,6 +1357,9 @@ boss_hit_radius :: proc(b: ^Boss) -> f32 {
 // damage window is open; everyone else is always damageable while alive.
 boss_can_take_damage :: proc(b: ^Boss) -> bool {
 	if !b.active {
+		return false
+	}
+	if b.dying {
 		return false
 	}
 	if b.kind == .Ancient_Guardian {
@@ -1463,6 +1493,7 @@ damage_guardian_orb :: proc(b: ^Boss, idx: int, amount: int) -> (applied: bool, 
 	if o.hp <= 0 {
 		o.hp = 0
 		o.active = false
+		b.orb_just_died = true
 		// Pick a new vulnerable orb among the remaining; if none are alive
 		// flip into the damage window. The window timer drives both the boss
 		// damageable state and the orb respawn at its expiry.
@@ -1521,8 +1552,12 @@ damage_boss :: proc(b: ^Boss, amount: int) -> (killed: bool) {
 		if b.hp <= 0 {
 			b.hp = 0
 			if b.phase >= 3 {
-				b.active = false
-				b.defeated = true
+				// Enter the death animation. active stays true so update_boss
+				// keeps ticking; defeated flips when the last death frame plays.
+				b.dying = true
+				b.frame = 0
+				b.frame_time = 0
+				b.hit_flash = 0
 				return true
 			}
 			// Enter the inter-phase pause. The HP bar is left at 0 and the
@@ -1545,8 +1580,12 @@ damage_boss :: proc(b: ^Boss, amount: int) -> (killed: bool) {
 	b.hp -= amount
 	if b.hp <= 0 {
 		b.hp = 0
-		b.active = false
-		b.defeated = true
+		// Golgatha enters the death animation; defeated flips when the last
+		// death frame plays out (see tick_golgatha_death).
+		b.dying = true
+		b.frame = 0
+		b.frame_time = 0
+		b.hit_flash = 0
 		return true
 	}
 	return false
@@ -1555,6 +1594,15 @@ damage_boss :: proc(b: ^Boss, amount: int) -> (killed: bool) {
 update_boss :: proc(pool: ^Boss_Pool, bullets: ^Bullet_Pool, sneaks: ^Sneak_Pool, dt: f32) {
 	b := &pool.boss
 	if !b.active {
+		return
+	}
+
+	if b.dying {
+		if b.kind == .Morgan {
+			tick_morgan_death(b, dt)
+		} else if b.kind == .Golgatha {
+			tick_golgatha_death(b, dt)
+		}
 		return
 	}
 
@@ -1718,8 +1766,14 @@ draw_boss :: proc(pool: ^Boss_Pool) {
 	frame_w := i32(BOSS_FRAME_W)
 	frame_h := i32(BOSS_FRAME_H)
 	scale: f32 = BOSS_DRAW_SCALE
+	if b.kind == .Golgatha && b.dying {
+		tex = pool.golgatha_death_tex
+	}
 	if b.kind == .Morgan {
 		tex = pool.morgan_idle_tex
+		if b.dying {
+			tex = pool.morgan_death_tex
+		}
 		frame_w = MORGAN_FRAME_W
 		frame_h = MORGAN_FRAME_H
 		scale = MORGAN_DRAW_SCALE
@@ -1791,6 +1845,34 @@ draw_guardian_orbs :: proc(b: ^Boss) {
 		rl.DrawCircleV(o.pos, GUARDIAN_ORB_RADIUS, mid)
 		rl.DrawCircleV(o.pos, GUARDIAN_ORB_RADIUS * 0.45, core)
 		rl.DrawCircleLinesV(o.pos, GUARDIAN_ORB_RADIUS, rl.Color{255, 255, 255, 200})
+	}
+}
+
+@(private = "file")
+tick_morgan_death :: proc(b: ^Boss, dt: f32) {
+	b.frame_time += dt
+	for b.frame_time >= MORGAN_DEATH_FRAME_DUR {
+		b.frame_time -= MORGAN_DEATH_FRAME_DUR
+		if b.frame >= MORGAN_DEATH_FRAMES - 1 {
+			b.active = false
+			b.defeated = true
+			return
+		}
+		b.frame += 1
+	}
+}
+
+@(private = "file")
+tick_golgatha_death :: proc(b: ^Boss, dt: f32) {
+	b.frame_time += dt
+	for b.frame_time >= BOSS_DEATH_FRAME_DUR {
+		b.frame_time -= BOSS_DEATH_FRAME_DUR
+		if b.frame >= BOSS_DEATH_FRAMES - 1 {
+			b.active = false
+			b.defeated = true
+			return
+		}
+		b.frame += 1
 	}
 }
 

@@ -458,9 +458,31 @@ update :: proc() {
 	   !gs.paused &&
 	   !gs.victory &&
 	   !gs.transitioning {
+		if !gs.boss.boss.scream_played {
+			play_golgotha_scream_sfx(&gs.audio)
+			gs.boss.boss.scream_played = true
+		}
 		tick_golgotha_bullet_hell_sfx(&gs.audio)
 	} else {
 		stop_golgotha_bullet_hell_sfx(&gs.audio)
+	}
+
+	// Ancient Guardian audio hooks: layered intro stinger on fight start, plus
+	// a random voice cue per orb death (set inside damage_guardian_orb, drained
+	// here). Same gate as the Golgatha block so cues don't bleed across pauses.
+	if gs.boss.boss.active &&
+	   gs.boss.boss.kind == .Ancient_Guardian &&
+	   !gs.paused &&
+	   !gs.victory &&
+	   !gs.transitioning {
+		if !gs.boss.boss.intro_played {
+			play_guardian_intro_sfx(&gs.audio)
+			gs.boss.boss.intro_played = true
+		}
+		if gs.boss.boss.orb_just_died {
+			play_guardian_orb_death_sfx(&gs.audio)
+			gs.boss.boss.orb_just_died = false
+		}
 	}
 
 	rl.BeginTextureMode(gs.render_target)
