@@ -451,6 +451,10 @@ Sneak_Pool :: struct {
 	// Mirror of Enemy_Pool.level2_phase, kept in sync so try_spawn_sneak can
 	// gate kill-driven minor spawns without needing a back-reference to Enemy_Pool.
 	level2_phase: Level2_Phase,
+	// Multiplier applied to the level-1 random sneak spawn chance. Set to 0
+	// while the wave-2 intro is pending so kill drops don't seed sneaks that
+	// would still be alive (and shooting) when the dialogue plays.
+	spawn_chance_scale: f32,
 }
 
 init_sneaks :: proc(pool: ^Sneak_Pool) {
@@ -460,6 +464,7 @@ init_sneaks :: proc(pool: ^Sneak_Pool) {
 	rl.SetTextureFilter(pool.cyclops_tex, .POINT)
 	pool.flash_shader = load_flash_shader()
 	pool.level = 1
+	pool.spawn_chance_scale = 1
 	for i in 0 ..< SNEAK_MAX {
 		pool.sneaks[i].active = false
 	}
@@ -512,7 +517,7 @@ effective_sneak_cap :: proc(pool: ^Sneak_Pool) -> int {
 
 try_spawn_sneak :: proc(pool: ^Sneak_Pool) {
 	if pool.level < 2 {
-		if rand.float32() < SNEAK_SPAWN_CHANCE {
+		if rand.float32() < SNEAK_SPAWN_CHANCE * pool.spawn_chance_scale {
 			force_spawn_sneak(pool)
 		}
 		return
@@ -1675,6 +1680,29 @@ draw_boss_hud :: proc(pool: ^Boss_Pool) {
 		shield_fill := i32(f32(sh_w) * f32(b.shield_hp) / f32(MORGAN_SHIELD_HP))
 		if shield_fill > 0 {
 			rl.DrawRectangle(sh_x, sh_y, shield_fill, sh_h, rl.Color{120, 200, 255, 255})
+		}
+		rl.DrawRectangleLines(sh_x, sh_y, sh_w, sh_h, rl.Color{200, 230, 255, 255})
+	}
+
+	// Compound orb-pool bar. Only the highlighted orb takes damage at any
+	// moment, but partial damage to non-killed orbs persists across vulnerability
+	// rotations — without this bar that progress is invisible and the fight
+	// feels static. Refills on the periodic orb respawn, which is the cue.
+	if b.kind == .Ancient_Guardian {
+		orb_hp_total: int
+		for i in 0 ..< GUARDIAN_ORB_COUNT {
+			orb_hp_total += b.orbs[i].hp
+		}
+		max_orb_hp := GUARDIAN_ORB_COUNT * GUARDIAN_ORB_HP
+		sh_w: i32 = BOSS_HUD_BAR_W * 2 / 3
+		sh_h: i32 = 4
+		sh_x := (SCREEN_WIDTH - sh_w) / 2
+		sh_y := bar_y + BOSS_HUD_BAR_H + 3
+		rl.DrawRectangle(sh_x - 1, sh_y - 1, sh_w + 2, sh_h + 2, rl.BLACK)
+		rl.DrawRectangle(sh_x, sh_y, sh_w, sh_h, rl.Color{20, 30, 50, 255})
+		orb_fill := i32(f32(sh_w) * f32(orb_hp_total) / f32(max_orb_hp))
+		if orb_fill > 0 {
+			rl.DrawRectangle(sh_x, sh_y, orb_fill, sh_h, rl.Color{120, 200, 255, 255})
 		}
 		rl.DrawRectangleLines(sh_x, sh_y, sh_w, sh_h, rl.Color{200, 230, 255, 255})
 	}

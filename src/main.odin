@@ -94,6 +94,7 @@ init :: proc() {
 	init_boss(&gs.boss)
 	init_pillars(&gs.pillars)
 	init_healthpacks(&gs.healthpacks)
+	init_bullets(&gs.bullets)
 	init_dialogue(&gs.dialogue)
 
 	gs.in_menu = true
@@ -129,6 +130,9 @@ start_new_game :: proc() {
 	gs.enemies.level2_waves_complete = 0
 	gs.enemies.level4_waves_complete = 0
 	gs.sneaks.level = 1
+	// Suppress level-1 kill-drop sneaks until the wave-2 intro plays — they'd
+	// otherwise be alive and shooting under the dialogue box.
+	gs.sneaks.spawn_chance_scale = 0
 	gs.boss.boss.active = false
 	gs.boss.boss.defeated = false
 
@@ -355,6 +359,12 @@ update :: proc() {
 			update_dialogue(&gs.dialogue, dt)
 		}
 
+		// Restore the level-1 kill-drop sneak chance the moment the wave-2
+		// intro is over, so wave 2 onward plays with the original spawn rate.
+		if gs.dialogue.wave2_intro_done && !gs.dialogue.active {
+			gs.sneaks.spawn_chance_scale = 1
+		}
+
 		// Pre-wave hint scenes (wave_id when="before"). Fire before update_enemies
 		// sees the empty pool and spawns the next wave, so wave 2 grunts don't pop
 		// in mid-screen while the dialogue is up.
@@ -535,6 +545,7 @@ shutdown :: proc() {
 	unload_player(&gs.player)
 	unload_background(&gs.background)
 	unload_audio(&gs.audio)
+	unload_bullets(&gs.bullets)
 	unload_dialogue(&gs.dialogue)
 	unload_input_hints()
 	rl.UnloadRenderTexture(gs.render_target)

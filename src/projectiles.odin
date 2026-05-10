@@ -415,7 +415,19 @@ Bullet :: struct {
 }
 
 Bullet_Pool :: struct {
-	bullets: [MAX_BULLETS]Bullet,
+	bullets:     [MAX_BULLETS]Bullet,
+	glow_shader: rl.Shader,
+	glow_tex:    rl.Texture2D,
+}
+
+init_bullets :: proc(pool: ^Bullet_Pool) {
+	pool.glow_shader = load_glow_shader()
+	pool.glow_tex = load_glow_texture()
+}
+
+unload_bullets :: proc(pool: ^Bullet_Pool) {
+	rl.UnloadTexture(pool.glow_tex)
+	rl.UnloadShader(pool.glow_shader)
 }
 
 spawn_bullet :: proc(
@@ -863,12 +875,24 @@ collide_bullets_enemies :: proc(
 	}
 }
 
+// All bullets render through the glow shader as additive textured quads. The
+// shader does the actual visual work — radial falloff, hot core, halo tint —
+// so the only per-bullet decisions here are quad radius and color. Additive
+// blending lets dense bullet patterns bloom into each other instead of reading
+// as a flat collage of dots.
 draw_bullets :: proc(pool: ^Bullet_Pool) {
+	rl.BeginBlendMode(.ADDITIVE)
+	defer rl.EndBlendMode()
+	rl.BeginShaderMode(pool.glow_shader)
+	defer rl.EndShaderMode()
+
 	for i in 0 ..< MAX_BULLETS {
 		b := &pool.bullets[i]
 		if !b.active {
 			continue
 		}
+		radius: f32
+		color: rl.Color
 		switch b.kind {
 		case .Enemy:
 			scale := f32(1)
@@ -878,40 +902,31 @@ draw_bullets :: proc(pool: ^Bullet_Pool) {
 					scale = 0
 				}
 			}
+			base := f32(BULLET_RADIUS)
 			if b.is_burst_orb {
-				draw_energy_orb(b, scale)
-			} else {
-				rl.DrawCircleV(b.pos, BULLET_RADIUS * scale, b.color)
+				base = MORGAN_ORB_DRAW_RADIUS
 			}
+			radius = base * BULLET_GLOW_MULT * scale
+			color = b.color
 		case .Reflected:
-			rl.DrawCircleV(b.pos, BULLET_RADIUS, rl.Color{160, 220, 255, 255})
+			radius = BULLET_RADIUS * BULLET_GLOW_MULT
+			color = rl.Color{160, 220, 255, 255}
 		case .Rapid_Fire:
-			draw_rapid_fire_bullet(b)
+			radius = RAPID_FIRE_RADIUS * RAPID_FIRE_GLOW_MULT
+			color = rl.Color{255, 80, 80, 255}
 		}
+		if radius <= 0 {
+			continue
+		}
+		draw_glow_quad(pool, b.pos, radius, color)
 	}
 }
 
 @(private = "file")
-draw_energy_orb :: proc(b: ^Bullet, scale: f32) {
-	if scale <= 0 {
-		return
-	}
-	core_r := MORGAN_ORB_DRAW_RADIUS * scale
-	glow := rl.Color{160, 80, 255, 70}
-	rl.DrawCircleV(b.pos, core_r * 2.4, glow)
-	rl.DrawCircleV(b.pos, core_r * 1.5, rl.Color{200, 140, 255, 160})
-	rl.DrawCircleV(b.pos, core_r, rl.Color{230, 200, 255, 255})
-	rl.DrawCircleV(b.pos, core_r * 0.45, rl.WHITE)
-}
-
-@(private = "file")
-draw_rapid_fire_bullet :: proc(b: ^Bullet) {
-	// Mirrors the laser palette: wide red glow, light pink mid, white core.
-	glow := rl.RED
-	glow.a = 70
-	rl.DrawCircleV(b.pos, RAPID_FIRE_RADIUS * RAPID_FIRE_GLOW_MULT, glow)
-	rl.DrawCircleV(b.pos, RAPID_FIRE_RADIUS * 1.6, rl.Color{255, 200, 200, 220})
-	rl.DrawCircleV(b.pos, RAPID_FIRE_RADIUS, rl.WHITE)
+draw_glow_quad :: proc(pool: ^Bullet_Pool, pos: rl.Vector2, radius: f32, color: rl.Color) {
+	src := rl.Rectangle{0, 0, 1, 1}
+	dst := rl.Rectangle{pos.x - radius, pos.y - radius, radius * 2, radius * 2}
+	rl.DrawTexturePro(pool.glow_tex, src, dst, {0, 0}, 0, color)
 }
 
 // #endregion

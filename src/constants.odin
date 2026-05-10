@@ -193,7 +193,8 @@ CYCLOPS_SPIRAL_INC_DEG :: 14.0 // deg/burst
 
 BULLET_LIFE :: 4.0 // s
 BULLET_RADIUS :: 3.0 // px
-MAX_BULLETS :: 512 
+BULLET_GLOW_MULT :: 3.0 // multiplier (quad radius / bullet radius — outer halo headroom)
+MAX_BULLETS :: 512
 
 SHRINK_BOMBS_PER_LEVEL :: 3 
 SHRINK_BOMB_DURATION :: 0.6 // s
