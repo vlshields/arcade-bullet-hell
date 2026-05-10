@@ -146,7 +146,7 @@ collide_beams_enemies :: proc(
 	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
-	score: ^int,
+	score: ^Score_Stats,
 ) {
 	for i in 0 ..< MAX_BEAMS {
 		b := &pool.beams[i]
@@ -166,7 +166,7 @@ collide_beams_enemies :: proc(
 			killed := damage_enemy(e, b.damage)
 			spawn_impact_particles(particles, ec, rl.RED, LASER_IMPACT_PARTICLES)
 			if killed {
-				score^ += SCORE_KILL_LASER
+				add_kill(score, .Laser)
 				try_spawn_sneak(sneaks)
 				try_drop_healthpack(packs, ec)
 			}
@@ -189,7 +189,7 @@ collide_beams_enemies :: proc(
 			killed := damage_sneak(s, b.damage)
 			spawn_impact_particles(particles, sc, rl.RED, LASER_IMPACT_PARTICLES)
 			if killed {
-				score^ += SCORE_KILL_LASER
+				add_kill(score, .Laser)
 				try_spawn_sneak(sneaks)
 				try_drop_healthpack(packs, sc)
 			}
@@ -213,7 +213,7 @@ collide_beams_enemies :: proc(
 			if applied {
 				spawn_impact_particles(particles, pc, rl.RED, LASER_IMPACT_PARTICLES)
 				if killed {
-					score^ += PILLAR_KILL_SCORE
+					add_kill(score, .Pillar)
 				}
 			} else {
 				spawn_impact_particles(particles, pc, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
@@ -232,7 +232,7 @@ collide_beams_enemies :: proc(
 					killed := damage_boss(&boss.boss, b.damage)
 					spawn_impact_particles(particles, bc, rl.RED, LASER_IMPACT_PARTICLES)
 					if killed {
-						score^ += SCORE_KILL_BOSS
+						add_kill(score, .Boss)
 						try_drop_healthpack(packs, bc)
 					}
 				} else {
@@ -255,7 +255,7 @@ collide_beams_enemies :: proc(
 				if applied {
 					spawn_impact_particles(particles, o.pos, rl.RED, LASER_IMPACT_PARTICLES)
 					if killed {
-						score^ += GUARDIAN_ORB_KILL_SCORE
+						add_kill(score, .Guardian_Orb)
 					}
 				} else {
 					spawn_impact_particles(particles, o.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
@@ -732,7 +732,7 @@ collide_bullets_enemies :: proc(
 	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
-	score: ^int,
+	score: ^Score_Stats,
 ) {
 	r_boss := boss_hit_radius(&boss.boss) + BULLET_RADIUS
 	r_boss_sq := r_boss * r_boss
@@ -743,11 +743,11 @@ collide_bullets_enemies :: proc(
 		}
 		damage := REFLECT_DAMAGE
 		impact_color := rl.Color{160, 220, 255, 255}
-		score_val := SCORE_KILL_REFLECT
+		score_kind := Score_Kind.Reflect
 		if b.kind == .Rapid_Fire {
 			damage = RAPID_FIRE_DAMAGE
 			impact_color = rl.Color{255, 80, 80, 255}
-			score_val = SCORE_KILL_RAPID
+			score_kind = .Rapid_Fire
 		}
 		hit := false
 		for ei in 0 ..< ENEMY_COUNT {
@@ -764,7 +764,7 @@ collide_bullets_enemies :: proc(
 				spawn_impact_particles(particles, ec, impact_color, REFLECT_IMPACT_PARTICLES)
 				b.active = false
 				if killed {
-					score^ += score_val
+					add_kill(score, score_kind)
 					try_spawn_sneak(sneaks)
 					try_drop_healthpack(packs, ec)
 				}
@@ -789,7 +789,7 @@ collide_bullets_enemies :: proc(
 				spawn_impact_particles(particles, sc, impact_color, REFLECT_IMPACT_PARTICLES)
 				b.active = false
 				if killed {
-					score^ += score_val
+					add_kill(score, score_kind)
 					try_spawn_sneak(sneaks)
 					try_drop_healthpack(packs, sc)
 				}
@@ -816,7 +816,7 @@ collide_bullets_enemies :: proc(
 			if applied {
 				spawn_impact_particles(particles, pc, impact_color, REFLECT_IMPACT_PARTICLES)
 				if killed {
-					score^ += PILLAR_KILL_SCORE
+					add_kill(score, .Pillar)
 				}
 			} else {
 				spawn_impact_particles(particles, pc, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
@@ -837,7 +837,7 @@ collide_bullets_enemies :: proc(
 					killed := damage_boss(&boss.boss, damage)
 					spawn_impact_particles(particles, bc, impact_color, REFLECT_IMPACT_PARTICLES)
 					if killed {
-						score^ += SCORE_KILL_BOSS
+						add_kill(score, .Boss)
 						try_drop_healthpack(packs, bc)
 					}
 				} else {
@@ -863,7 +863,7 @@ collide_bullets_enemies :: proc(
 				if applied {
 					spawn_impact_particles(particles, o.pos, impact_color, REFLECT_IMPACT_PARTICLES)
 					if killed {
-						score^ += GUARDIAN_ORB_KILL_SCORE
+						add_kill(score, .Guardian_Orb)
 					}
 				} else {
 					spawn_impact_particles(particles, o.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
@@ -1012,7 +1012,7 @@ update_missiles :: proc(
 	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
-	score: ^int,
+	score: ^Score_Stats,
 	dt: f32,
 ) {
 	steer_k := f32(1) - math.exp(-MISSILE_TURN_RATE * dt)
@@ -1188,7 +1188,7 @@ try_hit_missile :: proc(
 	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
-	score: ^int,
+	score: ^Score_Stats,
 ) -> bool {
 	for i in 0 ..< ENEMY_COUNT {
 		e := &enemies.enemies[i]
@@ -1203,7 +1203,7 @@ try_hit_missile :: proc(
 			killed := damage_enemy(e, MISSILE_DAMAGE)
 			spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
 			if killed {
-				score^ += SCORE_KILL_REFLECT
+				add_kill(score, .Missile)
 				try_spawn_sneak(sneaks)
 				try_drop_healthpack(packs, ec)
 			}
@@ -1223,7 +1223,7 @@ try_hit_missile :: proc(
 			killed := damage_sneak(s, MISSILE_DAMAGE)
 			spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
 			if killed {
-				score^ += SCORE_KILL_REFLECT
+				add_kill(score, .Missile)
 				try_spawn_sneak(sneaks)
 				try_drop_healthpack(packs, sc)
 			}
@@ -1240,7 +1240,7 @@ try_hit_missile :: proc(
 				killed := damage_boss(&boss.boss, MISSILE_DAMAGE)
 				spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
 				if killed {
-					score^ += SCORE_KILL_BOSS
+					add_kill(score, .Boss)
 					try_drop_healthpack(packs, bc)
 				}
 			} else {
@@ -1265,7 +1265,7 @@ try_hit_missile :: proc(
 			if applied {
 				spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
 				if killed {
-					score^ += GUARDIAN_ORB_KILL_SCORE
+					add_kill(score, .Guardian_Orb)
 				}
 			} else {
 				spawn_impact_particles(particles, m.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
@@ -1289,7 +1289,7 @@ try_hit_missile :: proc(
 		if applied {
 			spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
 			if killed {
-				score^ += PILLAR_KILL_SCORE
+				add_kill(score, .Pillar)
 			}
 		} else {
 			spawn_impact_particles(particles, m.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)

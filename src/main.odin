@@ -27,7 +27,7 @@ Game_State :: struct {
 	mouse_x:            int,
 	mouse_y:            int,
 	mouse_down:         bool,
-	score:              int,
+	score:              Score_Stats,
 	level:              int,
 	transitioning:      bool,
 	transition_t:       f32,
@@ -45,6 +45,8 @@ Game_State :: struct {
 	upgrade_cursor:       int,
 	paused:             bool,
 	pause:              Pause_Menu,
+	show_timer:         bool,
+	run_time:           f32,
 	dialogue:           Dialogue,
 	in_menu:            bool,
 	main_menu:          Main_Menu,
@@ -109,7 +111,8 @@ init :: proc() {
 @(private = "file")
 start_new_game :: proc() {
 	gs.level = 1
-	gs.score = 0
+	gs.score = {}
+	gs.run_time = 0
 	gs.victory = false
 	gs.victory_pending = false
 	gs.victory_delay_t = 0
@@ -258,12 +261,16 @@ update :: proc() {
 	}
 	quit_to_menu := false
 	if gs.paused && !just_opened_pause {
-		update_pause(&gs.pause, &gs.paused, &quit_to_menu, &gs.audio)
+		update_pause(&gs.pause, &gs.paused, &quit_to_menu, &gs.audio, &gs.show_timer)
 	}
 	if quit_to_menu {
 		return_to_main_menu()
 		draw_menu_frame()
 		return
+	}
+
+	if !gs.paused && !gs.victory {
+		gs.run_time += dt
 	}
 
 	if !gs.paused {
@@ -302,12 +309,12 @@ update :: proc() {
 				gs.victory_delay_t = 0
 				gs.victory = true
 				clear_world()
-				open_upgrade_choice()
-				// themesong1 is reserved for the final game-victory screen
-				// (after the last level). Intermediate level wins keep the
-				// current gameplay track rolling under the upgrade overlay.
+				// On the final level, no upgrade picker — go straight to the
+				// score-breakdown screen and swap to the victory theme.
 				if gs.level >= MAX_LEVEL {
 					play_track(&gs.audio, .Final_Victory)
+				} else {
+					open_upgrade_choice()
 				}
 			}
 		}
@@ -322,14 +329,17 @@ update :: proc() {
 				gs.player.upgrades += {gs.upgrade_choices[gs.upgrade_cursor]}
 				gs.choosing_upgrade = false
 			}
-		} else if gs.victory &&
-		   !gs.transitioning &&
-		   gs.level < MAX_LEVEL &&
-		   input_confirm_pressed() {
-			gs.transitioning = true
-			gs.transition_t = 0
-			gs.transition_swapped = false
-			gs.pending_action = .Advance_Mission
+		} else if gs.victory && !gs.transitioning && input_confirm_pressed() {
+			if gs.level < MAX_LEVEL {
+				gs.transitioning = true
+				gs.transition_t = 0
+				gs.transition_swapped = false
+				gs.pending_action = .Advance_Mission
+			} else {
+				return_to_main_menu()
+				draw_menu_frame()
+				return
+			}
 		}
 
 		update_mission_title(&gs.mission_title, dt)
@@ -347,9 +357,12 @@ update :: proc() {
 		// Slow-time only ticks during gameplay; outside gameplay world_dt = dt so
 		// the background scroll and timers run at full speed.
 		world_dt := dt
+		slow_time_audible := false
 		if !gs.victory && !gs.transitioning && !boss_pausing && !dialogue_blocking {
 			world_dt = update_slow_time(&gs.player, dt)
+			slow_time_audible = gs.player.slow_time_active
 		}
+		set_music_lpf_enabled(&gs.audio, slow_time_audible)
 
 		// Background keeps scrolling during victory + transition + dialogue so the
 		// world looks alive even while gameplay is frozen.
@@ -374,6 +387,11 @@ update :: proc() {
 		// field, overlaying live gameplay (non-pausing).
 		maybe_trigger_boss_dialogue()
 		maybe_trigger_l5_guardian_dialogue()
+
+		// Block kill-drop sneak/cyclops spawns during VICTORY_DELAY so the
+		// player finishing off a leftover enemy doesn't seed new spawns that
+		// would flash on screen before clear_world fires at end-of-delay.
+		gs.sneaks.spawns_blocked = gs.victory_pending
 
 		if !gs.victory && !gs.transitioning && !dialogue_blocking {
 			if boss_pausing {
@@ -503,9 +521,12 @@ update :: proc() {
 	draw_slow_time_tint(&gs.player)
 	draw_player_hud(&gs.player)
 	draw_boss_hud(&gs.boss)
-	draw_score(gs.score)
+	draw_score(gs.score.total)
+	if gs.show_timer {
+		draw_run_timer(gs.run_time)
+	}
 	if gs.victory {
-		draw_victory(gs.level, gs.score, gs.choosing_upgrade, gs.level < MAX_LEVEL)
+		draw_victory(gs.level, gs.score, gs.choosing_upgrade, gs.level < MAX_LEVEL, gs.run_time)
 		if gs.choosing_upgrade {
 			draw_upgrade_choice(
 				gs.upgrade_choices[:gs.upgrade_choice_count],
@@ -521,7 +542,7 @@ update :: proc() {
 		draw_transition(gs.transition_t)
 	}
 	if gs.paused {
-		draw_pause(&gs.pause, &gs.audio)
+		draw_pause(&gs.pause, &gs.audio, &gs.show_timer)
 	}
 	rl.EndTextureMode()
 
@@ -716,8 +737,28 @@ draw_score :: proc(score: int) {
 	rl.DrawText(text, HP_BAR_MARGIN, HP_BAR_MARGIN, SCORE_FONT_SIZE, rl.WHITE)
 }
 
-draw_victory :: proc(level: int, score: int, choosing: bool, has_next: bool) {
+draw_run_timer :: proc(run_time: f32) {
+	t := run_time
+	if t < 0 {
+		t = 0
+	}
+	total := int(t)
+	mins := total / 60
+	secs := total % 60
+	text := fmt.ctprintf("%02d:%02d", mins, secs)
+	w := rl.MeasureText(text, SCORE_FONT_SIZE)
+	x: i32 = SCREEN_WIDTH - HP_BAR_MARGIN - w
+	rl.DrawText(text, x + 1, HP_BAR_MARGIN + 1, SCORE_FONT_SIZE, rl.BLACK)
+	rl.DrawText(text, x, HP_BAR_MARGIN, SCORE_FONT_SIZE, rl.WHITE)
+}
+
+draw_victory :: proc(level: int, score: Score_Stats, choosing: bool, has_next: bool, run_time: f32) {
 	rl.DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, rl.Color{0, 0, 0, VICTORY_OVERLAY_ALPHA})
+
+	if !has_next {
+		draw_final_victory(score, run_time)
+		return
+	}
 
 	// While the upgrade picker is up, the title/score sit higher to leave room
 	// for the two upgrade cards beneath them.
@@ -733,14 +774,14 @@ draw_victory :: proc(level: int, score: int, choosing: bool, has_next: bool) {
 	rl.DrawText(title, title_x + 2, title_y + 2, VICTORY_TITLE_FONT_SIZE, rl.BLACK)
 	rl.DrawText(title, title_x, title_y, VICTORY_TITLE_FONT_SIZE, rl.WHITE)
 
-	score_text := fmt.ctprintf("SCORE: %d", score)
+	score_text := fmt.ctprintf("SCORE: %d", score.total)
 	score_w := rl.MeasureText(score_text, VICTORY_SCORE_FONT_SIZE)
 	score_x: i32 = (SCREEN_WIDTH - score_w) / 2
 	score_y: i32 = title_y + VICTORY_TITLE_FONT_SIZE + 12
 	rl.DrawText(score_text, score_x + 1, score_y + 1, VICTORY_SCORE_FONT_SIZE, rl.BLACK)
 	rl.DrawText(score_text, score_x, score_y, VICTORY_SCORE_FONT_SIZE, rl.YELLOW)
 
-	if choosing || !has_next {
+	if choosing {
 		return
 	}
 
@@ -752,6 +793,72 @@ draw_victory :: proc(level: int, score: int, choosing: bool, has_next: bool) {
 	total_w := pre_w + HINT_TEXT_GAP + icon_w + HINT_TEXT_GAP + tail_w
 	prompt_x: i32 = (SCREEN_WIDTH - total_w) / 2
 	prompt_y: i32 = score_y + VICTORY_SCORE_FONT_SIZE + 16
+	icon_y := prompt_y + (VICTORY_PROMPT_FONT_SIZE - HINT_ICON_SIZE) / 2
+	rl.DrawText(pre, prompt_x + 1, prompt_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
+	rl.DrawText(pre, prompt_x, prompt_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
+	icon_x := prompt_x + pre_w + HINT_TEXT_GAP
+	draw_input_hint(.Confirm, icon_x, icon_y, HINT_ICON_SIZE)
+	tail_x := icon_x + icon_w + HINT_TEXT_GAP
+	rl.DrawText(tail, tail_x + 1, prompt_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
+	rl.DrawText(tail, tail_x, prompt_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
+}
+
+@(private = "file")
+draw_final_victory :: proc(score: Score_Stats, run_time: f32) {
+	title := cstring("VICTORY")
+	title_w := rl.MeasureText(title, VICTORY_TITLE_FONT_SIZE)
+	title_x: i32 = (SCREEN_WIDTH - title_w) / 2
+	title_y: i32 = FINAL_VICTORY_TITLE_Y
+	rl.DrawText(title, title_x + 2, title_y + 2, VICTORY_TITLE_FONT_SIZE, rl.BLACK)
+	rl.DrawText(title, title_x, title_y, VICTORY_TITLE_FONT_SIZE, rl.WHITE)
+
+	score_text := fmt.ctprintf("FINAL SCORE: %d", score.total)
+	score_w := rl.MeasureText(score_text, VICTORY_SCORE_FONT_SIZE)
+	score_x: i32 = (SCREEN_WIDTH - score_w) / 2
+	score_y: i32 = title_y + VICTORY_TITLE_FONT_SIZE + 8
+	rl.DrawText(score_text, score_x + 1, score_y + 1, VICTORY_SCORE_FONT_SIZE, rl.BLACK)
+	rl.DrawText(score_text, score_x, score_y, VICTORY_SCORE_FONT_SIZE, rl.YELLOW)
+
+	t := run_time
+	if t < 0 {
+		t = 0
+	}
+	total_secs := int(t)
+	mins := total_secs / 60
+	secs := total_secs % 60
+	time_text := fmt.ctprintf("TIME: %02d:%02d", mins, secs)
+	time_w := rl.MeasureText(time_text, VICTORY_SCORE_FONT_SIZE)
+	time_x: i32 = (SCREEN_WIDTH - time_w) / 2
+	time_y: i32 = score_y + VICTORY_SCORE_FONT_SIZE + 4
+	rl.DrawText(time_text, time_x + 1, time_y + 1, VICTORY_SCORE_FONT_SIZE, rl.BLACK)
+	rl.DrawText(time_text, time_x, time_y, VICTORY_SCORE_FONT_SIZE, rl.WHITE)
+
+	row_y := time_y + VICTORY_SCORE_FONT_SIZE + 14
+	font := i32(FINAL_VICTORY_BREAKDOWN_FONT_SIZE)
+	for k in Score_Kind {
+		count := score.kills[k]
+		if count == 0 {
+			continue
+		}
+		label := score_kind_label(k)
+		value := fmt.ctprintf("%d = %d", count, count * score_kind_points(k))
+		value_w := rl.MeasureText(value, font)
+		rl.DrawText(label, FINAL_VICTORY_LABEL_X + 1, row_y + 1, font, rl.BLACK)
+		rl.DrawText(label, FINAL_VICTORY_LABEL_X, row_y, font, rl.WHITE)
+		value_x := i32(FINAL_VICTORY_VALUE_RIGHT_X) - value_w
+		rl.DrawText(value, value_x + 1, row_y + 1, font, rl.BLACK)
+		rl.DrawText(value, value_x, row_y, font, rl.YELLOW)
+		row_y += FINAL_VICTORY_LINE_GAP
+	}
+
+	pre := cstring("PRESS")
+	tail := cstring("TO RETURN TO MAIN MENU")
+	pre_w := rl.MeasureText(pre, VICTORY_PROMPT_FONT_SIZE)
+	tail_w := rl.MeasureText(tail, VICTORY_PROMPT_FONT_SIZE)
+	icon_w := input_hint_width(.Confirm, HINT_ICON_SIZE)
+	total_w := pre_w + HINT_TEXT_GAP + icon_w + HINT_TEXT_GAP + tail_w
+	prompt_x: i32 = (SCREEN_WIDTH - total_w) / 2
+	prompt_y: i32 = FINAL_VICTORY_PROMPT_BOTTOM_Y
 	icon_y := prompt_y + (VICTORY_PROMPT_FONT_SIZE - HINT_ICON_SIZE) / 2
 	rl.DrawText(pre, prompt_x + 1, prompt_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
 	rl.DrawText(pre, prompt_x, prompt_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)

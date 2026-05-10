@@ -1,5 +1,6 @@
 package game
 
+import "core:c"
 import "core:math"
 import rl "vendor:raylib"
 import "core:encoding/json"
@@ -89,9 +90,59 @@ play_track :: proc(a: ^Audio, t: Music_Track) {
 	if a.current_track == t {
 		return
 	}
+	was_lpf := lpf_attached
+	if was_lpf {
+		rl.DetachAudioStreamProcessor(a.music[a.current_track].stream, audio_lpf)
+		lpf_attached = false
+	}
 	rl.StopMusicStream(a.music[a.current_track])
 	rl.PlayMusicStream(a.music[t])
 	a.current_track = t
+	if was_lpf {
+		lpf_state = {0, 0}
+		rl.AttachAudioStreamProcessor(a.music[t].stream, audio_lpf)
+		lpf_attached = true
+	}
+}
+
+// One-pole RC low-pass per channel, attached to the music stream while Slow
+// Time is held to muffle the soundtrack as a sensory cue. Modeled on raylib's
+// stream-effects example: stereo float32 interleaved buffer. Runs on raylib's
+// audio thread, so it must be `proc "c"` (no implicit context).
+@(private = "file")
+lpf_state := [2]f32{0, 0}
+
+@(private = "file")
+lpf_attached: bool
+
+@(private = "file")
+audio_lpf :: proc "c" (buffer: rawptr, frames: c.uint) {
+	cutoff :: SLOW_TIME_LPF_CUTOFF_HZ / 44100.0
+	k :: cutoff / (cutoff + 0.1591549431) // 1/(2*pi); RC filter formula
+	data := ([^]f32)(buffer)
+	for i: c.uint = 0; i < frames * 2; i += 2 {
+		l := data[i]
+		r := data[i + 1]
+		lpf_state[0] += k * (l - lpf_state[0])
+		lpf_state[1] += k * (r - lpf_state[1])
+		data[i] = lpf_state[0]
+		data[i + 1] = lpf_state[1]
+	}
+}
+
+// Idempotent: safe to call every frame with the current Slow Time state.
+set_music_lpf_enabled :: proc(a: ^Audio, enabled: bool) {
+	if enabled == lpf_attached {
+		return
+	}
+	if enabled {
+		// Reset accumulator so the filter doesn't pop from a stale tail.
+		lpf_state = {0, 0}
+		rl.AttachAudioStreamProcessor(a.music[a.current_track].stream, audio_lpf)
+	} else {
+		rl.DetachAudioStreamProcessor(a.music[a.current_track].stream, audio_lpf)
+	}
+	lpf_attached = enabled
 }
 
 // Picks the right gameplay track for a level. Used at level entry and on
@@ -107,6 +158,10 @@ gameplay_track_for_level :: proc(level: int) -> Music_Track {
 }
 
 unload_audio :: proc(a: ^Audio) {
+	if lpf_attached {
+		rl.DetachAudioStreamProcessor(a.music[a.current_track].stream, audio_lpf)
+		lpf_attached = false
+	}
 	for t in Music_Track {
 		rl.StopMusicStream(a.music[t])
 		rl.UnloadMusicStream(a.music[t])
@@ -590,6 +645,14 @@ update_level2_pacing :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool, dt: f32)
 		return
 	}
 
+	// Phases keep advancing past the win count (Free_For_All self-loops, and
+	// Between_3Cyc_Sneaks re-spawns cyclopses on entry). Without this gate,
+	// on_enter_phase / tick_phase fire during VICTORY_DELAY and seed enemies
+	// that flash on screen before clear_world. Mirrors update_level4_pacing.
+	if enemies.level2_waves_complete >= LEVEL2_WAVES_TO_VICTORY {
+		return
+	}
+
 	if !enemies.level2_phase_started {
 		on_enter_phase(enemies, sneaks)
 		enemies.level2_phase_started = true
@@ -920,7 +983,7 @@ draw_main_menu :: proc(mm: ^Main_Menu, audio: ^Audio) {
 	case .Main:
 		draw_main_menu_items(mm.cursor)
 	case .Options:
-		draw_pause_options(mm.cursor, audio)
+		draw_pause_options(mm.cursor, audio, nil)
 	case .Controls:
 		draw_pause_controls()
 	}
@@ -956,7 +1019,7 @@ reset_pause_menu :: proc(pm: ^Pause_Menu) {
 	pm.cursor = 0
 }
 
-update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio: ^Audio) {
+update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio: ^Audio, show_timer: ^bool) {
 	switch pm.screen {
 	case .Main:
 		if input_pause_toggle_pressed() {
@@ -990,7 +1053,7 @@ update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio:
 			pm.cursor = 1
 			return
 		}
-		item_count := 3
+		item_count := 4
 		step := input_menu_step_y()
 		if step != 0 {
 			pm.cursor = (pm.cursor + step + item_count) % item_count
@@ -1002,11 +1065,18 @@ update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio:
 				set_music_volume(audio, audio.music_volume + f32(h) * PAUSE_VOLUME_STEP)
 			case 1:
 				set_sfx_volume(audio, audio.sfx_volume + f32(h) * PAUSE_VOLUME_STEP)
+			case 2:
+				show_timer^ = !show_timer^
 			}
 		}
-		if input_confirm_pressed() && pm.cursor == 2 {
-			pm.screen = .Main
-			pm.cursor = 1
+		if input_confirm_pressed() {
+			switch pm.cursor {
+			case 2:
+				show_timer^ = !show_timer^
+			case 3:
+				pm.screen = .Main
+				pm.cursor = 1
+			}
 		}
 
 	case .Controls:
@@ -1017,7 +1087,7 @@ update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio:
 	}
 }
 
-draw_pause :: proc(pm: ^Pause_Menu, audio: ^Audio) {
+draw_pause :: proc(pm: ^Pause_Menu, audio: ^Audio, show_timer: ^bool) {
 	rl.DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, rl.Color{0, 0, 0, PAUSE_OVERLAY_ALPHA})
 
 	title := cstring("PAUSED")
@@ -1030,7 +1100,7 @@ draw_pause :: proc(pm: ^Pause_Menu, audio: ^Audio) {
 	case .Main:
 		draw_pause_main(pm.cursor)
 	case .Options:
-		draw_pause_options(pm.cursor, audio)
+		draw_pause_options(pm.cursor, audio, show_timer)
 	case .Controls:
 		draw_pause_controls()
 	}
@@ -1046,14 +1116,51 @@ draw_pause_main :: proc(cursor: int) {
 	}
 }
 
-draw_pause_options :: proc(cursor: int, audio: ^Audio) {
+draw_pause_options :: proc(cursor: int, audio: ^Audio, show_timer: ^bool) {
 	row_h: i32 = PAUSE_ITEM_FONT_SIZE + PAUSE_SLIDER_H + 10
 	y: i32 = PAUSE_MENU_TOP_Y
 	draw_menu_slider(cstring("MUSIC"), audio.music_volume, y, cursor == 0)
 	y += row_h + PAUSE_ITEM_GAP
 	draw_menu_slider(cstring("SFX"), audio.sfx_volume, y, cursor == 1)
 	y += row_h + PAUSE_ITEM_GAP
-	draw_menu_label(cstring("BACK"), y, cursor == 2)
+	if show_timer != nil {
+		draw_menu_toggle(cstring("SHOW TIMER"), show_timer^, y, cursor == 2)
+		y += PAUSE_ITEM_FONT_SIZE + PAUSE_ITEM_GAP
+		draw_menu_label(cstring("BACK"), y, cursor == 3)
+	} else {
+		draw_menu_label(cstring("BACK"), y, cursor == 2)
+	}
+}
+
+draw_menu_toggle :: proc(label: cstring, value: bool, y: i32, selected: bool) {
+	color := rl.Color{180, 180, 180, 255}
+	if selected {
+		color = rl.WHITE
+	}
+	state: cstring = "OFF"
+	if value {
+		state = "ON"
+	}
+	label_w := rl.MeasureText(label, PAUSE_ITEM_FONT_SIZE)
+	state_w := rl.MeasureText(state, PAUSE_ITEM_FONT_SIZE)
+	spacing: i32 = 16
+	total_w := label_w + spacing + state_w
+	label_x := (i32(SCREEN_WIDTH) - total_w) / 2
+	state_x := label_x + label_w + spacing
+	rl.DrawText(label, label_x + 1, y + 1, PAUSE_ITEM_FONT_SIZE, rl.BLACK)
+	rl.DrawText(label, label_x, y, PAUSE_ITEM_FONT_SIZE, color)
+	state_color := color
+	if value && selected {
+		state_color = rl.Color{80, 180, 255, 255}
+	} else if value {
+		state_color = rl.Color{120, 160, 200, 255}
+	}
+	rl.DrawText(state, state_x + 1, y + 1, PAUSE_ITEM_FONT_SIZE, rl.BLACK)
+	rl.DrawText(state, state_x, y, PAUSE_ITEM_FONT_SIZE, state_color)
+	if selected {
+		rl.DrawText(cstring(">"), label_x - 14, y, PAUSE_ITEM_FONT_SIZE, rl.YELLOW)
+		rl.DrawText(cstring("<"), state_x + state_w + 6, y, PAUSE_ITEM_FONT_SIZE, rl.YELLOW)
+	}
 }
 
 draw_pause_controls :: proc() {

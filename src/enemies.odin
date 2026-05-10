@@ -458,6 +458,10 @@ Sneak_Pool :: struct {
 	// while the wave-2 intro is pending so kill drops don't seed sneaks that
 	// would still be alive (and shooting) when the dialogue plays.
 	spawn_chance_scale: f32,
+	// Hard gate on every try_spawn_sneak path — set during the post-victory
+	// VICTORY_DELAY window so leftover enemy kills don't seed new sneaks /
+	// cyclops that would flash on screen before clear_world fires.
+	spawns_blocked:     bool,
 }
 
 init_sneaks :: proc(pool: ^Sneak_Pool) {
@@ -519,6 +523,9 @@ effective_sneak_cap :: proc(pool: ^Sneak_Pool) -> int {
 }
 
 try_spawn_sneak :: proc(pool: ^Sneak_Pool) {
+	if pool.spawns_blocked {
+		return
+	}
 	if pool.level < 2 {
 		if rand.float32() < SNEAK_SPAWN_CHANCE * pool.spawn_chance_scale {
 			force_spawn_sneak(pool)

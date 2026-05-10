@@ -443,7 +443,7 @@ update_player_attack :: proc(
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
 	audio: ^Audio,
-	score: ^int,
+	score: ^Score_Stats,
 	dt: f32,
 ) {
 	if p.fire_timer > 0 {
@@ -582,7 +582,7 @@ fire_charge_beam :: proc(
 	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
-	score: ^int,
+	score: ^Score_Stats,
 ) {
 	damage := CHARGE_BEAM_BASE_DAMAGE + int(f32(CHARGE_BEAM_DAMAGE_BONUS) * charge)
 	// Match the outer glow (drawn at thickness * 2 line width, so half-width = thickness)
@@ -605,7 +605,7 @@ fire_charge_beam :: proc(
 		killed := damage_enemy(e, damage)
 		spawn_impact_particles(particles, ec, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 		if killed {
-			score^ += SCORE_KILL_CHARGE
+			add_kill(score, .Charge)
 			try_spawn_sneak(sneaks)
 			try_drop_healthpack(packs, ec)
 		}
@@ -626,7 +626,7 @@ fire_charge_beam :: proc(
 		killed := damage_sneak(s, damage)
 		spawn_impact_particles(particles, sc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 		if killed {
-			score^ += SCORE_KILL_CHARGE
+			add_kill(score, .Charge)
 			try_spawn_sneak(sneaks)
 			try_drop_healthpack(packs, sc)
 		}
@@ -639,7 +639,7 @@ fire_charge_beam :: proc(
 				killed := damage_boss(&boss.boss, damage)
 				spawn_impact_particles(particles, bc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 				if killed {
-					score^ += SCORE_KILL_BOSS
+					add_kill(score, .Boss)
 					try_drop_healthpack(packs, bc)
 				}
 			} else {
@@ -664,7 +664,7 @@ fire_charge_beam :: proc(
 			if applied {
 				spawn_impact_particles(particles, o.pos, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 				if killed {
-					score^ += GUARDIAN_ORB_KILL_SCORE
+					add_kill(score, .Guardian_Orb)
 				}
 			} else {
 				spawn_impact_particles(particles, o.pos, rl.WHITE, PILLAR_BLOCKED_PARTICLES)
@@ -688,7 +688,7 @@ fire_charge_beam :: proc(
 		if applied {
 			spawn_impact_particles(particles, pc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 			if killed {
-				score^ += PILLAR_KILL_SCORE
+				add_kill(score, .Pillar)
 			}
 		} else {
 			spawn_impact_particles(particles, pc, rl.WHITE, PILLAR_BLOCKED_PARTICLES)

@@ -94,7 +94,7 @@
                     "speaker": "captain_paprika",
                     "line_id": "paprika_hint_04",
                     "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
-                    "text": "Zombi, hold {attack} to charge up a giant beam! Press {confirm} to dismiss."
+                    "text": "Zombi, hold {attack} to charge up a giant beam!"
                 }
        
             ],
