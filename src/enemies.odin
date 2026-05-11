@@ -46,10 +46,19 @@ WeirdGuy_Corpse :: struct {
 	active:     bool,
 }
 
+Grunt_Corpse :: struct {
+	pos:        rl.Vector2,
+	frame:      int,
+	frame_time: f32,
+	active:     bool,
+}
+
 Enemy_Pool :: struct {
 	enemies:           [ENEMY_COUNT]Enemy,
 	weirdguy_corpses:  [WEIRDGUY_CORPSE_MAX]WeirdGuy_Corpse,
+	grunt_corpses:     [GRUNT_CORPSE_MAX]Grunt_Corpse,
 	tex:               rl.Texture2D,
+	grunt_dies_tex:    rl.Texture2D,
 	weirdguy_tex:      rl.Texture2D,
 	weirdguy_dies_tex: rl.Texture2D,
 	flash_shader:      rl.Shader,
@@ -74,6 +83,8 @@ Enemy_Pool :: struct {
 init_enemies :: proc(pool: ^Enemy_Pool) {
 	pool.tex = rl.LoadTexture("assets/sprites/enemy_grunt_move.png")
 	rl.SetTextureFilter(pool.tex, .POINT)
+	pool.grunt_dies_tex = rl.LoadTexture("assets/sprites/enemy_grunt_dies.png")
+	rl.SetTextureFilter(pool.grunt_dies_tex, .POINT)
 	pool.weirdguy_tex = rl.LoadTexture("assets/sprites/enemy_weirdguy_move.png")
 	rl.SetTextureFilter(pool.weirdguy_tex, .POINT)
 	pool.weirdguy_dies_tex = rl.LoadTexture("assets/sprites/enemy_weirdguy_dies.png")
@@ -88,6 +99,7 @@ init_enemies :: proc(pool: ^Enemy_Pool) {
 
 unload_enemies :: proc(pool: ^Enemy_Pool) {
 	rl.UnloadTexture(pool.tex)
+	rl.UnloadTexture(pool.grunt_dies_tex)
 	rl.UnloadTexture(pool.weirdguy_tex)
 	rl.UnloadTexture(pool.weirdguy_dies_tex)
 	rl.UnloadShader(pool.flash_shader)
@@ -144,6 +156,57 @@ draw_weirdguy_corpses :: proc(pool: ^Enemy_Pool) {
 		}
 		dst := rl.Rectangle{c.pos.x - draw_w * 0.5, c.pos.y - draw_h * 0.5, draw_w, draw_h}
 		rl.DrawTexturePro(pool.weirdguy_dies_tex, src, dst, {0, 0}, 0, rl.WHITE)
+	}
+}
+
+spawn_grunt_corpse :: proc(pool: ^Enemy_Pool, pos: rl.Vector2) {
+	for i in 0 ..< GRUNT_CORPSE_MAX {
+		c := &pool.grunt_corpses[i]
+		if c.active {
+			continue
+		}
+		c.pos = pos
+		c.frame = 0
+		c.frame_time = 0
+		c.active = true
+		return
+	}
+}
+
+update_grunt_corpses :: proc(pool: ^Enemy_Pool, dt: f32) {
+	for i in 0 ..< GRUNT_CORPSE_MAX {
+		c := &pool.grunt_corpses[i]
+		if !c.active {
+			continue
+		}
+		c.frame_time += dt
+		for c.frame_time >= GRUNT_DEATH_FRAME_DUR {
+			c.frame_time -= GRUNT_DEATH_FRAME_DUR
+			if c.frame >= GRUNT_DEATH_FRAMES - 1 {
+				c.active = false
+				break
+			}
+			c.frame += 1
+		}
+	}
+}
+
+draw_grunt_corpses :: proc(pool: ^Enemy_Pool) {
+	draw_w := f32(ENEMY_FRAME_W * ENEMY_DRAW_SCALE)
+	draw_h := f32(ENEMY_FRAME_H * ENEMY_DRAW_SCALE)
+	for i in 0 ..< GRUNT_CORPSE_MAX {
+		c := &pool.grunt_corpses[i]
+		if !c.active {
+			continue
+		}
+		src := rl.Rectangle {
+			f32(c.frame * ENEMY_FRAME_W),
+			0,
+			f32(ENEMY_FRAME_W),
+			f32(ENEMY_FRAME_H),
+		}
+		dst := rl.Rectangle{c.pos.x - draw_w * 0.5, c.pos.y - draw_h * 0.5, draw_w, draw_h}
+		rl.DrawTexturePro(pool.grunt_dies_tex, src, dst, {0, 0}, 0, rl.WHITE)
 	}
 }
 
@@ -335,6 +398,7 @@ update_enemies :: proc(
 	}
 
 	update_weirdguy_corpses(pool, dt)
+	update_grunt_corpses(pool, dt)
 }
 
 @(private = "file")
@@ -435,6 +499,7 @@ update_weirdguy_one :: proc(
 
 draw_enemies :: proc(pool: ^Enemy_Pool) {
 	draw_weirdguy_corpses(pool)
+	draw_grunt_corpses(pool)
 	for i in 0 ..< ENEMY_COUNT {
 		e := &pool.enemies[i]
 		if !e.active {
@@ -492,6 +557,15 @@ Sneak_Data :: struct {
 	anchor:         rl.Vector2,
 	sway_phase:     f32,
 	teleport_timer: f32,
+	frame:          int,
+	frame_time:     f32,
+}
+
+Sneak_Corpse :: struct {
+	pos:        rl.Vector2,
+	frame:      int,
+	frame_time: f32,
+	active:     bool,
 }
 
 Cyclops_Data :: struct {
@@ -517,11 +591,13 @@ Sneak :: struct {
 }
 
 Sneak_Pool :: struct {
-	sneaks:       [SNEAK_MAX]Sneak,
-	tex:          rl.Texture2D,
-	cyclops_tex:  rl.Texture2D,
-	flash_shader: rl.Shader,
-	level:        int,
+	sneaks:        [SNEAK_MAX]Sneak,
+	corpses:       [SNEAK_CORPSE_MAX]Sneak_Corpse,
+	tex:           rl.Texture2D,
+	dies_tex:      rl.Texture2D,
+	cyclops_tex:   rl.Texture2D,
+	flash_shader:  rl.Shader,
+	level:         int,
 	// Mirror of Enemy_Pool.level2_phase, kept in sync so try_spawn_sneak can
 	// gate kill-driven minor spawns without needing a back-reference to Enemy_Pool.
 	level2_phase: Level2_Phase,
@@ -542,6 +618,8 @@ Sneak_Pool :: struct {
 init_sneaks :: proc(pool: ^Sneak_Pool) {
 	pool.tex = rl.LoadTexture("assets/sprites/enemy_sneak_move.png")
 	rl.SetTextureFilter(pool.tex, .POINT)
+	pool.dies_tex = rl.LoadTexture("assets/sprites/enemy_sneak_dies.png")
+	rl.SetTextureFilter(pool.dies_tex, .POINT)
 	pool.cyclops_tex = rl.LoadTexture("assets/sprites/enemy_cyclops_move.png")
 	rl.SetTextureFilter(pool.cyclops_tex, .POINT)
 	pool.flash_shader = load_flash_shader()
@@ -554,8 +632,60 @@ init_sneaks :: proc(pool: ^Sneak_Pool) {
 
 unload_sneaks :: proc(pool: ^Sneak_Pool) {
 	rl.UnloadTexture(pool.tex)
+	rl.UnloadTexture(pool.dies_tex)
 	rl.UnloadTexture(pool.cyclops_tex)
 	rl.UnloadShader(pool.flash_shader)
+}
+
+spawn_sneak_corpse :: proc(pool: ^Sneak_Pool, pos: rl.Vector2) {
+	for i in 0 ..< SNEAK_CORPSE_MAX {
+		c := &pool.corpses[i]
+		if c.active {
+			continue
+		}
+		c.pos = pos
+		c.frame = 0
+		c.frame_time = 0
+		c.active = true
+		return
+	}
+}
+
+update_sneak_corpses :: proc(pool: ^Sneak_Pool, dt: f32) {
+	for i in 0 ..< SNEAK_CORPSE_MAX {
+		c := &pool.corpses[i]
+		if !c.active {
+			continue
+		}
+		c.frame_time += dt
+		for c.frame_time >= SNEAK_DEATH_FRAME_DUR {
+			c.frame_time -= SNEAK_DEATH_FRAME_DUR
+			if c.frame >= SNEAK_DEATH_FRAMES - 1 {
+				c.active = false
+				break
+			}
+			c.frame += 1
+		}
+	}
+}
+
+draw_sneak_corpses :: proc(pool: ^Sneak_Pool) {
+	draw_w := f32(SNEAK_FRAME_W * SNEAK_DRAW_SCALE)
+	draw_h := f32(SNEAK_FRAME_H * SNEAK_DRAW_SCALE)
+	for i in 0 ..< SNEAK_CORPSE_MAX {
+		c := &pool.corpses[i]
+		if !c.active {
+			continue
+		}
+		src := rl.Rectangle {
+			f32(c.frame * SNEAK_FRAME_W),
+			0,
+			f32(SNEAK_FRAME_W),
+			f32(SNEAK_FRAME_H),
+		}
+		dst := rl.Rectangle{c.pos.x - draw_w * 0.5, c.pos.y - draw_h * 0.5, draw_w, draw_h}
+		rl.DrawTexturePro(pool.dies_tex, src, dst, {0, 0}, 0, rl.WHITE)
+	}
 }
 
 damage_sneak :: proc(s: ^Sneak, amount: int) -> (killed: bool) {
@@ -616,7 +746,9 @@ try_spawn_sneak :: proc(pool: ^Sneak_Pool) {
 	case .Wave1_WG_Only,
 	     .Between_1Cyclops,
 	     .Between_1Cyc_2Sneaks,
-	     .Between_4Sneaks:
+	     .Between_4Sneaks,
+	     .Between_4Sneaks_2,
+	     .Between_4Sneaks_3:
 		return
 	case .Wave2_WG_Sneaks:
 		// "Weird guys and sneaks" — only sneaks here, no cyclops.
@@ -707,6 +839,8 @@ force_spawn_cyclops :: proc(pool: ^Sneak_Pool) {
 }
 
 update_sneaks :: proc(pool: ^Sneak_Pool, player: ^Player, bullets: ^Bullet_Pool, audio: ^Audio, dt: f32) {
+	update_sneak_corpses(pool, dt)
+
 	pcx := player.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
 	pcy := player.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
 	player_center := rl.Vector2{pcx, pcy}
@@ -736,6 +870,13 @@ update_sneaks :: proc(pool: ^Sneak_Pool, player: ^Player, bullets: ^Bullet_Pool,
 @(private = "file")
 update_sneak_one :: proc(pool: ^Sneak_Pool, s: ^Sneak, index: int, player_center: rl.Vector2, bullets: ^Bullet_Pool, dt: f32) {
 	d := &s.data.(Sneak_Data)
+
+	d.frame_time += dt
+	frame_dur: f32 = 1.0 / SNEAK_ANIM_FPS
+	for d.frame_time >= frame_dur {
+		d.frame_time -= frame_dur
+		d.frame = (d.frame + 1) % SNEAK_FRAMES
+	}
 
 	d.sway_phase += SNEAK_SWAY_FREQ * math.TAU * dt
 	if d.sway_phase >= math.TAU {
@@ -888,6 +1029,7 @@ update_cyclops_one :: proc(
 }
 
 draw_sneaks :: proc(pool: ^Sneak_Pool) {
+	draw_sneak_corpses(pool)
 	for i in 0 ..< SNEAK_MAX {
 		s := &pool.sneaks[i]
 		if !s.active {
@@ -904,9 +1046,10 @@ draw_sneaks :: proc(pool: ^Sneak_Pool) {
 
 @(private = "file")
 draw_sneak_one :: proc(pool: ^Sneak_Pool, s: ^Sneak) {
+	d := &s.data.(Sneak_Data)
 	draw_w := f32(SNEAK_FRAME_W * SNEAK_DRAW_SCALE)
 	draw_h := f32(SNEAK_FRAME_H * SNEAK_DRAW_SCALE)
-	src := rl.Rectangle{0, 0, f32(SNEAK_FRAME_W), f32(SNEAK_FRAME_H)}
+	src := rl.Rectangle{f32(d.frame * SNEAK_FRAME_W), 0, f32(SNEAK_FRAME_W), f32(SNEAK_FRAME_H)}
 	dst := rl.Rectangle{s.pos.x - draw_w * 0.5, s.pos.y - draw_h * 0.5, draw_w, draw_h}
 	flashing := s.hit_flash > 0
 	if flashing {
@@ -1454,6 +1597,13 @@ boss_can_take_damage :: proc(b: ^Boss) -> bool {
 		return false
 	}
 	if b.dying {
+		return false
+	}
+	// Mid phase-transition the boss is invulnerable. Without this, multi-hit
+	// frames (e.g. Beam Blast's 5-bolt fan all landing at once) can carry
+	// excess damage from the kill-shot into a second phase advance, skipping
+	// the next phase entirely.
+	if boss_phase_pausing(b) {
 		return false
 	}
 	if b.kind == .Ancient_Guardian {

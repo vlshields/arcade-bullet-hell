@@ -694,6 +694,8 @@ Level2_Phase :: enum {
 	Between_1Cyc_2Sneaks,
 	Wave2_WG_Sneaks,
 	Between_4Sneaks,
+	Between_4Sneaks_2,
+	Between_4Sneaks_3,
 	Between_3Cyc_Sneaks,
 	Free_For_All,
 }
@@ -744,7 +746,7 @@ on_enter_phase :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) {
 		}
 	case .Wave2_WG_Sneaks:
 		spawn_weirdguys_for_phase(enemies)
-	case .Between_4Sneaks:
+	case .Between_4Sneaks, .Between_4Sneaks_2, .Between_4Sneaks_3:
 		for i in 0 ..< LEVEL2_BETWEEN_4SNEAKS_COUNT {
 			_ = i
 			force_spawn_sneak(sneaks)
@@ -799,7 +801,7 @@ phase_complete :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) -> bool {
 		return count_cyclops_alive(sneaks) == 0 && count_sneaks_alive(sneaks) == 0
 	case .Wave2_WG_Sneaks:
 		return !any_weirdguy_alive(enemies)
-	case .Between_4Sneaks:
+	case .Between_4Sneaks, .Between_4Sneaks_2, .Between_4Sneaks_3:
 		return count_sneaks_alive(sneaks) == 0 && count_cyclops_alive(sneaks) == 0
 	case .Between_3Cyc_Sneaks:
 		return enemies.level2_cyc_killed >= LEVEL2_BETWEEN_3CYC_TARGET &&
@@ -823,6 +825,10 @@ advance_phase :: proc(enemies: ^Enemy_Pool, sneaks: ^Sneak_Pool) {
 	case .Wave2_WG_Sneaks:
 		next = .Between_4Sneaks
 	case .Between_4Sneaks:
+		next = .Between_4Sneaks_2
+	case .Between_4Sneaks_2:
+		next = .Between_4Sneaks_3
+	case .Between_4Sneaks_3:
 		next = .Between_3Cyc_Sneaks
 	case .Between_3Cyc_Sneaks:
 		next = .Free_For_All
@@ -1247,13 +1253,15 @@ draw_pause_controls :: proc() {
 	y += PAUSE_BODY_LINE_GAP
 	draw_control_row(cstring("DASH"), .Dash, y)
 	y += PAUSE_BODY_LINE_GAP
-	draw_control_row(cstring("SLOW TIME"), .Slow_Time, y)
+	draw_control_row(cstring("SHRINK TIME"), .Slow_Time, y)
 	y += PAUSE_BODY_LINE_GAP
 	draw_control_row(cstring("SHRINK BOMB"), .Shrink_Bomb, y)
 	y += PAUSE_BODY_LINE_GAP
 	draw_control_row(cstring("PAUSE"), .Pause, y)
 	y += PAUSE_BODY_LINE_GAP
 	draw_control_row(cstring("CONFIRM"), .Confirm, y)
+	y += PAUSE_BODY_LINE_GAP
+	draw_control_row(cstring("REROLL"), .Reroll, y)
 	y += PAUSE_BODY_LINE_GAP
 
 	draw_return_hint()
@@ -1897,74 +1905,6 @@ draw_dialogue_text :: proc(text: string, atoms_revealed: int, x0, y0, w, line_h:
 		drawn += len(chunk)
 		i = end
 	}
-}
-
-// #endregion
-
-// #region Scoring System
-Score_Kind :: enum {
-	Laser,
-	Charge,
-	Reflect,
-	Rapid_Fire,
-	Missile,
-	Boss,
-	Pillar,
-	Guardian_Orb,
-}
-
-Score_Stats :: struct {
-	total: int,
-	kills: [Score_Kind]int,
-}
-
-score_kind_points :: proc(k: Score_Kind) -> int {
-	switch k {
-	case .Laser:
-		return SCORE_KILL_LASER
-	case .Charge:
-		return SCORE_KILL_CHARGE
-	case .Reflect:
-		return SCORE_KILL_REFLECT
-	case .Rapid_Fire:
-		return SCORE_KILL_RAPID
-	case .Missile:
-		return SCORE_KILL_MISSILE
-	case .Boss:
-		return SCORE_KILL_BOSS
-	case .Pillar:
-		return PILLAR_KILL_SCORE
-	case .Guardian_Orb:
-		return GUARDIAN_ORB_KILL_SCORE
-	}
-	return 0
-}
-
-score_kind_label :: proc(k: Score_Kind) -> cstring {
-	switch k {
-	case .Laser:
-		return "LASER KILLS"
-	case .Charge:
-		return "CHARGE BEAM KILLS"
-	case .Reflect:
-		return "DASH REFLECT KILLS"
-	case .Rapid_Fire:
-		return "RAPID FIRE KILLS"
-	case .Missile:
-		return "HOMING MISSILE KILLS"
-	case .Boss:
-		return "BOSS KILLS"
-	case .Pillar:
-		return "PILLAR KILLS"
-	case .Guardian_Orb:
-		return "GUARDIAN ORB KILLS"
-	}
-	return ""
-}
-
-add_kill :: proc(s: ^Score_Stats, k: Score_Kind) {
-	s.kills[k] += 1
-	s.total += score_kind_points(k)
 }
 
 // #endregion

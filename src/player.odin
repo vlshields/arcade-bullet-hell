@@ -1,5 +1,6 @@
 package game
 
+import "core:fmt"
 import "core:math"
 import rl "vendor:raylib"
 
@@ -392,15 +393,26 @@ draw_dash_trail :: proc(p: ^Player, tex: rl.Texture2D, src: rl.Rectangle) {
 }
 
 draw_player_hud :: proc(p: ^Player) {
-	x: i32 = HP_BAR_MARGIN
-	stam_y: i32 = SCREEN_HEIGHT - HP_BAR_MARGIN - HP_BAR_H
-	hp_y: i32 = stam_y - STATUS_BAR_GAP - HP_BAR_H
-
-	rl.DrawRectangle(x, hp_y, HP_BAR_W, HP_BAR_H, rl.Color{40, 40, 40, 255})
 	hp := p.hp
 	if hp < 0 {
 		hp = 0
 	}
+	stam := p.stamina
+	if stam < 0 {
+		stam = 0
+	}
+
+	hp_text := fmt.ctprintf("%d/%d", hp, p.max_hp)
+	stam_text := fmt.ctprintf("%d/%d", int(stam), int(p.max_stamina))
+	hp_text_w := rl.MeasureText(hp_text, STATUS_BAR_NUM_FONT_SIZE)
+	stam_text_w := rl.MeasureText(stam_text, STATUS_BAR_NUM_FONT_SIZE)
+	num_col_w: i32 = max(hp_text_w, stam_text_w)
+
+	x: i32 = HP_BAR_MARGIN + num_col_w + STATUS_BAR_NUM_GAP
+	stam_y: i32 = SCREEN_HEIGHT - HP_BAR_MARGIN - HP_BAR_H
+	hp_y: i32 = stam_y - STATUS_BAR_GAP - HP_BAR_H
+
+	rl.DrawRectangle(x, hp_y, HP_BAR_W, HP_BAR_H, rl.Color{40, 40, 40, 255})
 	hp_fill_w := i32(f32(HP_BAR_W) * f32(hp) / f32(p.max_hp))
 	if hp_fill_w > 0 {
 		rl.DrawRectangle(x, hp_y, hp_fill_w, HP_BAR_H, rl.Color{220, 60, 60, 255})
@@ -408,15 +420,22 @@ draw_player_hud :: proc(p: ^Player) {
 	rl.DrawRectangleLines(x, hp_y, HP_BAR_W, HP_BAR_H, rl.WHITE)
 
 	rl.DrawRectangle(x, stam_y, HP_BAR_W, HP_BAR_H, rl.Color{40, 40, 40, 255})
-	stam := p.stamina
-	if stam < 0 {
-		stam = 0
-	}
 	stam_fill_w := i32(f32(HP_BAR_W) * stam / p.max_stamina)
 	if stam_fill_w > 0 {
 		rl.DrawRectangle(x, stam_y, stam_fill_w, HP_BAR_H, rl.Color{80, 180, 240, 255})
 	}
 	rl.DrawRectangleLines(x, stam_y, HP_BAR_W, HP_BAR_H, rl.WHITE)
+
+	num_right: i32 = x - STATUS_BAR_NUM_GAP
+	hp_text_x := num_right - hp_text_w
+	hp_text_y := hp_y + (HP_BAR_H - STATUS_BAR_NUM_FONT_SIZE) / 2
+	rl.DrawText(hp_text, hp_text_x + 1, hp_text_y + 1, STATUS_BAR_NUM_FONT_SIZE, rl.BLACK)
+	rl.DrawText(hp_text, hp_text_x, hp_text_y, STATUS_BAR_NUM_FONT_SIZE, rl.WHITE)
+
+	stam_text_x := num_right - stam_text_w
+	stam_text_y := stam_y + (HP_BAR_H - STATUS_BAR_NUM_FONT_SIZE) / 2
+	rl.DrawText(stam_text, stam_text_x + 1, stam_text_y + 1, STATUS_BAR_NUM_FONT_SIZE, rl.BLACK)
+	rl.DrawText(stam_text, stam_text_x, stam_text_y, STATUS_BAR_NUM_FONT_SIZE, rl.WHITE)
 
 	pip_cy := f32(stam_y) + f32(HP_BAR_H) * 0.5
 	pip_x := f32(x + HP_BAR_W) + f32(SHRINK_BOMB_HUD_DOT_GAP) + SHRINK_BOMB_HUD_DOT_R
@@ -454,7 +473,6 @@ update_player_attack :: proc(
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
 	audio: ^Audio,
-	score: ^Score_Stats,
 	dt: f32,
 ) {
 	if p.fire_timer > 0 {
@@ -548,7 +566,7 @@ update_player_attack :: proc(
 
 	if input_attack_released() {
 		release_charge_beam(b)
-		fire_charge_beam(b, p.charge, enemies, sneaks, boss, pillars, packs, particles, audio, score)
+		fire_charge_beam(b, p.charge, enemies, sneaks, boss, pillars, packs, particles, audio)
 		p.stamina -= CHARGE_BEAM_FULL_STAMINA_COST * p.charge
 		if p.stamina < 0 {
 			p.stamina = 0
@@ -594,7 +612,6 @@ fire_charge_beam :: proc(
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
 	audio: ^Audio,
-	score: ^Score_Stats,
 ) {
 	damage := CHARGE_BEAM_BASE_DAMAGE + int(f32(CHARGE_BEAM_DAMAGE_BONUS) * charge)
 	// Match the outer glow (drawn at thickness * 2 line width, so half-width = thickness)
@@ -617,7 +634,6 @@ fire_charge_beam :: proc(
 		killed := damage_enemy(e, damage)
 		spawn_impact_particles(particles, ec, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 		if killed {
-			add_kill(score, .Charge)
 			try_spawn_sneak(sneaks)
 			try_drop_healthpack(packs, ec)
 			if e.kind == .WeirdGuy {
@@ -625,6 +641,7 @@ fire_charge_beam :: proc(
 				spawn_weirdguy_corpse(enemies, ec)
 			} else {
 				play_enemy_death_sfx(audio)
+				spawn_grunt_corpse(enemies, ec)
 			}
 		} else {
 			play_enemy_damage_sfx(audio)
@@ -643,13 +660,16 @@ fire_charge_beam :: proc(
 		if abs(sc.x - pcx) > half_width + sneak_hit_radius(s) {
 			continue
 		}
+		was_sneak := s.kind == .Sneak
 		killed := damage_sneak(s, damage)
 		spawn_impact_particles(particles, sc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 		if killed {
-			add_kill(score, .Charge)
 			try_spawn_sneak(sneaks)
 			try_drop_healthpack(packs, sc)
 			play_enemy_death_sfx(audio)
+			if was_sneak {
+				spawn_sneak_corpse(sneaks, sc)
+			}
 		} else {
 			play_enemy_damage_sfx(audio)
 		}
@@ -662,7 +682,6 @@ fire_charge_beam :: proc(
 				killed := damage_boss(&boss.boss, damage)
 				spawn_impact_particles(particles, bc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 				if killed {
-					add_kill(score, .Boss)
 					try_drop_healthpack(packs, bc)
 					play_enemy_death_sfx(audio)
 				} else {
@@ -690,7 +709,6 @@ fire_charge_beam :: proc(
 			if applied {
 				spawn_impact_particles(particles, o.pos, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 				if killed {
-					add_kill(score, .Guardian_Orb)
 					// Orb death cue handled by main.odin (Guardian voice line).
 				} else {
 					play_enemy_damage_sfx(audio)
@@ -717,7 +735,6 @@ fire_charge_beam :: proc(
 		if applied {
 			spawn_impact_particles(particles, pc, rl.MAGENTA, CHARGE_BEAM_IMPACT_PARTICLES)
 			if killed {
-				add_kill(score, .Pillar)
 				play_enemy_death_sfx(audio)
 			} else {
 				play_enemy_damage_sfx(audio)

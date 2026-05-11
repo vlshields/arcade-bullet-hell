@@ -134,7 +134,6 @@ collide_beams_enemies :: proc(
 	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
-	score: ^Score_Stats,
 	audio: ^Audio,
 ) {
 	for i in 0 ..< MAX_BEAMS {
@@ -155,7 +154,6 @@ collide_beams_enemies :: proc(
 			killed := damage_enemy(e, b.damage)
 			spawn_impact_particles(particles, ec, rl.RED, LASER_IMPACT_PARTICLES)
 			if killed {
-				add_kill(score, .Laser)
 				try_spawn_sneak(sneaks)
 				try_drop_healthpack(packs, ec)
 				if e.kind == .WeirdGuy {
@@ -163,6 +161,7 @@ collide_beams_enemies :: proc(
 					spawn_weirdguy_corpse(enemies, ec)
 				} else {
 					play_enemy_death_sfx(audio)
+					spawn_grunt_corpse(enemies, ec)
 				}
 			} else {
 				play_enemy_damage_sfx(audio)
@@ -183,13 +182,16 @@ collide_beams_enemies :: proc(
 			if !beam_segment_hits(b.start, b.end, sc, sneak_hit_radius(s)) {
 				continue
 			}
+			was_sneak := s.kind == .Sneak
 			killed := damage_sneak(s, b.damage)
 			spawn_impact_particles(particles, sc, rl.RED, LASER_IMPACT_PARTICLES)
 			if killed {
-				add_kill(score, .Laser)
 				try_spawn_sneak(sneaks)
 				try_drop_healthpack(packs, sc)
 				play_enemy_death_sfx(audio)
+				if was_sneak {
+					spawn_sneak_corpse(sneaks, sc)
+				}
 			} else {
 				play_enemy_damage_sfx(audio)
 			}
@@ -213,7 +215,6 @@ collide_beams_enemies :: proc(
 			if applied {
 				spawn_impact_particles(particles, pc, rl.RED, LASER_IMPACT_PARTICLES)
 				if killed {
-					add_kill(score, .Pillar)
 					play_enemy_death_sfx(audio)
 				} else {
 					play_enemy_damage_sfx(audio)
@@ -235,7 +236,6 @@ collide_beams_enemies :: proc(
 					killed := damage_boss(&boss.boss, b.damage)
 					spawn_impact_particles(particles, bc, rl.RED, LASER_IMPACT_PARTICLES)
 					if killed {
-						add_kill(score, .Boss)
 						try_drop_healthpack(packs, bc)
 						play_enemy_death_sfx(audio)
 					} else {
@@ -261,7 +261,6 @@ collide_beams_enemies :: proc(
 				if applied {
 					spawn_impact_particles(particles, o.pos, rl.RED, LASER_IMPACT_PARTICLES)
 					if killed {
-						add_kill(score, .Guardian_Orb)
 						// Orb kill cue is handled by main.odin via b.orb_just_died
 						// (plays a Guardian voice line); skip the generic death sfx
 						// here so we don't double up.
@@ -720,7 +719,6 @@ collide_bullets_enemies :: proc(
 	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
-	score: ^Score_Stats,
 	audio: ^Audio,
 ) {
 	r_boss := boss_hit_radius(&boss.boss) + BULLET_RADIUS
@@ -732,11 +730,9 @@ collide_bullets_enemies :: proc(
 		}
 		damage := REFLECT_DAMAGE
 		impact_color := rl.Color{160, 220, 255, 255}
-		score_kind := Score_Kind.Reflect
 		if b.kind == .Rapid_Fire {
 			damage = RAPID_FIRE_DAMAGE
 			impact_color = rl.Color{255, 80, 80, 255}
-			score_kind = .Rapid_Fire
 		}
 		hit := false
 		for ei in 0 ..< ENEMY_COUNT {
@@ -753,7 +749,6 @@ collide_bullets_enemies :: proc(
 				spawn_impact_particles(particles, ec, impact_color, REFLECT_IMPACT_PARTICLES)
 				b.active = false
 				if killed {
-					add_kill(score, score_kind)
 					try_spawn_sneak(sneaks)
 					try_drop_healthpack(packs, ec)
 					if e.kind == .WeirdGuy {
@@ -782,14 +777,17 @@ collide_bullets_enemies :: proc(
 			dx := b.pos.x - sc.x
 			dy := b.pos.y - sc.y
 			if dx * dx + dy * dy <= r * r {
+				was_sneak := s.kind == .Sneak
 				killed := damage_sneak(s, damage)
 				spawn_impact_particles(particles, sc, impact_color, REFLECT_IMPACT_PARTICLES)
 				b.active = false
 				if killed {
-					add_kill(score, score_kind)
 					try_spawn_sneak(sneaks)
 					try_drop_healthpack(packs, sc)
 					play_enemy_death_sfx(audio)
+					if was_sneak {
+						spawn_sneak_corpse(sneaks, sc)
+					}
 				} else {
 					play_enemy_damage_sfx(audio)
 				}
@@ -816,7 +814,6 @@ collide_bullets_enemies :: proc(
 			if applied {
 				spawn_impact_particles(particles, pc, impact_color, REFLECT_IMPACT_PARTICLES)
 				if killed {
-					add_kill(score, .Pillar)
 					play_enemy_death_sfx(audio)
 				} else {
 					play_enemy_damage_sfx(audio)
@@ -840,7 +837,6 @@ collide_bullets_enemies :: proc(
 					killed := damage_boss(&boss.boss, damage)
 					spawn_impact_particles(particles, bc, impact_color, REFLECT_IMPACT_PARTICLES)
 					if killed {
-						add_kill(score, .Boss)
 						try_drop_healthpack(packs, bc)
 						play_enemy_death_sfx(audio)
 					} else {
@@ -869,7 +865,6 @@ collide_bullets_enemies :: proc(
 				if applied {
 					spawn_impact_particles(particles, o.pos, impact_color, REFLECT_IMPACT_PARTICLES)
 					if killed {
-						add_kill(score, .Guardian_Orb)
 						// Orb death cue handled by main.odin (Guardian voice line).
 					} else {
 						play_enemy_damage_sfx(audio)
@@ -943,15 +938,11 @@ draw_glow_quad :: proc(pool: ^Bullet_Pool, pos: rl.Vector2, radius: f32, color: 
 // #region Missles
 
 
-// Homing missile spawned by the Dash Frenzy upgrade. Projectiles are not
-// sprites — the body is a stack of additive purple circles and the trail is a
-// ring buffer of past positions, also drawn as fading purple glow circles.
-
 Missile :: struct {
 	pos:           rl.Vector2,
 	vel:           rl.Vector2,
 	life:          f32,
-	blind_time:    f32, // grace before homing kicks in so the launch fan is visible
+	blind_time:    f32, 
 	trail:         [MISSILE_TRAIL_LEN]rl.Vector2,
 	trail_count:   int,
 	trail_sample:  f32,
@@ -1021,7 +1012,6 @@ update_missiles :: proc(
 	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
-	score: ^Score_Stats,
 	audio: ^Audio,
 	dt: f32,
 ) {
@@ -1077,7 +1067,7 @@ update_missiles :: proc(
 		}
 
 		// Collision: first hit detonates the missile.
-		if try_hit_missile(m, enemies, sneaks, boss, pillars, packs, particles, score, audio) {
+		if try_hit_missile(m, enemies, sneaks, boss, pillars, packs, particles, audio) {
 			m.active = false
 		}
 	}
@@ -1198,7 +1188,6 @@ try_hit_missile :: proc(
 	pillars: ^Pillar_Wave,
 	packs: ^HealthPack_Pool,
 	particles: ^Particle_Pool,
-	score: ^Score_Stats,
 	audio: ^Audio,
 ) -> bool {
 	for i in 0 ..< ENEMY_COUNT {
@@ -1214,13 +1203,14 @@ try_hit_missile :: proc(
 			killed := damage_enemy(e, MISSILE_DAMAGE)
 			spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
 			if killed {
-				add_kill(score, .Missile)
 				try_spawn_sneak(sneaks)
 				try_drop_healthpack(packs, ec)
 				if e.kind == .WeirdGuy {
 					play_weirdguy_death_sfx(audio)
+					spawn_weirdguy_corpse(enemies, ec)
 				} else {
 					play_enemy_death_sfx(audio)
+					spawn_grunt_corpse(enemies, ec)
 				}
 			} else {
 				play_enemy_damage_sfx(audio)
@@ -1238,13 +1228,16 @@ try_hit_missile :: proc(
 		dx := m.pos.x - sc.x
 		dy := m.pos.y - sc.y
 		if dx * dx + dy * dy <= r * r {
+			was_sneak := s.kind == .Sneak
 			killed := damage_sneak(s, MISSILE_DAMAGE)
 			spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
 			if killed {
-				add_kill(score, .Missile)
 				try_spawn_sneak(sneaks)
 				try_drop_healthpack(packs, sc)
 				play_enemy_death_sfx(audio)
+				if was_sneak {
+					spawn_sneak_corpse(sneaks, sc)
+				}
 			} else {
 				play_enemy_damage_sfx(audio)
 			}
@@ -1261,7 +1254,6 @@ try_hit_missile :: proc(
 				killed := damage_boss(&boss.boss, MISSILE_DAMAGE)
 				spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
 				if killed {
-					add_kill(score, .Boss)
 					try_drop_healthpack(packs, bc)
 					play_enemy_death_sfx(audio)
 				} else {
@@ -1289,7 +1281,6 @@ try_hit_missile :: proc(
 			if applied {
 				spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
 				if killed {
-					add_kill(score, .Guardian_Orb)
 					// Orb death cue handled by main.odin (Guardian voice line).
 				} else {
 					play_enemy_damage_sfx(audio)
@@ -1316,7 +1307,6 @@ try_hit_missile :: proc(
 		if applied {
 			spawn_impact_particles(particles, m.pos, rl.MAGENTA, MISSILE_IMPACT_PARTICLES)
 			if killed {
-				add_kill(score, .Pillar)
 				play_enemy_death_sfx(audio)
 			} else {
 				play_enemy_damage_sfx(audio)

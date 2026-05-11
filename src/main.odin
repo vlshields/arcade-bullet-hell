@@ -27,7 +27,6 @@ Game_State :: struct {
 	mouse_x:            int,
 	mouse_y:            int,
 	mouse_down:         bool,
-	score:              Score_Stats,
 	level:              int,
 	transitioning:      bool,
 	transition_t:       f32,
@@ -114,7 +113,6 @@ init :: proc() {
 @(private = "file")
 start_new_game :: proc() {
 	gs.level = 1
-	gs.score = {}
 	gs.run_time = 0
 	gs.victory = false
 	gs.victory_pending = false
@@ -315,7 +313,7 @@ update :: proc() {
 				gs.victory = true
 				clear_world()
 				// On the final level, no upgrade picker — go straight to the
-				// score-breakdown screen and swap to the victory theme.
+				// final victory screen and swap to the victory theme.
 				if gs.level >= MAX_LEVEL {
 					play_track(&gs.audio, .Final_Victory)
 				} else {
@@ -436,7 +434,6 @@ update :: proc() {
 					&gs.healthpacks,
 					&gs.particles,
 					&gs.audio,
-					&gs.score,
 					dt,
 				)
 				update_beams(&gs.beams, dt)
@@ -448,7 +445,6 @@ update :: proc() {
 					&gs.pillars,
 					&gs.healthpacks,
 					&gs.particles,
-					&gs.score,
 					&gs.audio,
 				)
 				update_missiles(
@@ -459,7 +455,6 @@ update :: proc() {
 					&gs.pillars,
 					&gs.healthpacks,
 					&gs.particles,
-					&gs.score,
 					&gs.audio,
 					dt,
 				)
@@ -474,7 +469,6 @@ update :: proc() {
 					&gs.pillars,
 					&gs.healthpacks,
 					&gs.particles,
-					&gs.score,
 					&gs.audio,
 				)
 				update_healthpacks(&gs.healthpacks, &gs.player, world_dt)
@@ -561,12 +555,11 @@ update :: proc() {
 	draw_slow_time_tint(&gs.player)
 	draw_player_hud(&gs.player)
 	draw_boss_hud(&gs.boss)
-	draw_score(gs.score.total)
 	if gs.show_timer {
 		draw_run_timer(gs.run_time)
 	}
 	if gs.victory {
-		draw_victory(gs.level, gs.score, gs.choosing_upgrade, gs.level < MAX_LEVEL, gs.run_time)
+		draw_victory(gs.level, gs.choosing_upgrade, gs.level < MAX_LEVEL, gs.run_time)
 		if gs.choosing_upgrade {
 			draw_upgrade_choice(
 				gs.upgrade_choices[:gs.upgrade_choice_count],
@@ -779,11 +772,6 @@ clear_world :: proc() {
 	gs.player.charge = 0
 }
 
-draw_score :: proc(score: int) {
-	text := fmt.ctprintf("SCORE: %d", score)
-	rl.DrawText(text, HP_BAR_MARGIN, HP_BAR_MARGIN, SCORE_FONT_SIZE, rl.WHITE)
-}
-
 draw_run_timer :: proc(run_time: f32) {
 	t := run_time
 	if t < 0 {
@@ -793,22 +781,22 @@ draw_run_timer :: proc(run_time: f32) {
 	mins := total / 60
 	secs := total % 60
 	text := fmt.ctprintf("%02d:%02d", mins, secs)
-	w := rl.MeasureText(text, SCORE_FONT_SIZE)
+	w := rl.MeasureText(text, TIMER_FONT_SIZE)
 	x: i32 = SCREEN_WIDTH - HP_BAR_MARGIN - w
-	rl.DrawText(text, x + 1, HP_BAR_MARGIN + 1, SCORE_FONT_SIZE, rl.BLACK)
-	rl.DrawText(text, x, HP_BAR_MARGIN, SCORE_FONT_SIZE, rl.WHITE)
+	rl.DrawText(text, x + 1, HP_BAR_MARGIN + 1, TIMER_FONT_SIZE, rl.BLACK)
+	rl.DrawText(text, x, HP_BAR_MARGIN, TIMER_FONT_SIZE, rl.WHITE)
 }
 
-draw_victory :: proc(level: int, score: Score_Stats, choosing: bool, has_next: bool, run_time: f32) {
+draw_victory :: proc(level: int, choosing: bool, has_next: bool, run_time: f32) {
 	rl.DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, rl.Color{0, 0, 0, VICTORY_OVERLAY_ALPHA})
 
 	if !has_next {
-		draw_final_victory(score, run_time)
+		draw_final_victory(run_time)
 		return
 	}
 
-	// While the upgrade picker is up, the title/score sit higher to leave room
-	// for the two upgrade cards beneath them.
+	// While the upgrade picker is up, the title sits higher to leave room for
+	// the upgrade cards beneath it.
 	mid_y: i32 = SCREEN_HEIGHT / 2 - VICTORY_TITLE_FONT_SIZE
 	if choosing {
 		mid_y = UPGRADE_TITLE_Y
@@ -821,13 +809,6 @@ draw_victory :: proc(level: int, score: Score_Stats, choosing: bool, has_next: b
 	rl.DrawText(title, title_x + 2, title_y + 2, VICTORY_TITLE_FONT_SIZE, rl.BLACK)
 	rl.DrawText(title, title_x, title_y, VICTORY_TITLE_FONT_SIZE, rl.WHITE)
 
-	score_text := fmt.ctprintf("SCORE: %d", score.total)
-	score_w := rl.MeasureText(score_text, VICTORY_SCORE_FONT_SIZE)
-	score_x: i32 = (SCREEN_WIDTH - score_w) / 2
-	score_y: i32 = title_y + VICTORY_TITLE_FONT_SIZE + 12
-	rl.DrawText(score_text, score_x + 1, score_y + 1, VICTORY_SCORE_FONT_SIZE, rl.BLACK)
-	rl.DrawText(score_text, score_x, score_y, VICTORY_SCORE_FONT_SIZE, rl.YELLOW)
-
 	if choosing {
 		return
 	}
@@ -839,7 +820,7 @@ draw_victory :: proc(level: int, score: Score_Stats, choosing: bool, has_next: b
 	icon_w := input_hint_width(.Confirm, HINT_ICON_SIZE)
 	total_w := pre_w + HINT_TEXT_GAP + icon_w + HINT_TEXT_GAP + tail_w
 	prompt_x: i32 = (SCREEN_WIDTH - total_w) / 2
-	prompt_y: i32 = score_y + VICTORY_SCORE_FONT_SIZE + 16
+	prompt_y: i32 = title_y + VICTORY_TITLE_FONT_SIZE + 16
 	icon_y := prompt_y + (VICTORY_PROMPT_FONT_SIZE - HINT_ICON_SIZE) / 2
 	rl.DrawText(pre, prompt_x + 1, prompt_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
 	rl.DrawText(pre, prompt_x, prompt_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
@@ -851,20 +832,13 @@ draw_victory :: proc(level: int, score: Score_Stats, choosing: bool, has_next: b
 }
 
 @(private = "file")
-draw_final_victory :: proc(score: Score_Stats, run_time: f32) {
+draw_final_victory :: proc(run_time: f32) {
 	title := cstring("VICTORY")
 	title_w := rl.MeasureText(title, VICTORY_TITLE_FONT_SIZE)
 	title_x: i32 = (SCREEN_WIDTH - title_w) / 2
 	title_y: i32 = FINAL_VICTORY_TITLE_Y
 	rl.DrawText(title, title_x + 2, title_y + 2, VICTORY_TITLE_FONT_SIZE, rl.BLACK)
 	rl.DrawText(title, title_x, title_y, VICTORY_TITLE_FONT_SIZE, rl.WHITE)
-
-	score_text := fmt.ctprintf("FINAL SCORE: %d", score.total)
-	score_w := rl.MeasureText(score_text, VICTORY_SCORE_FONT_SIZE)
-	score_x: i32 = (SCREEN_WIDTH - score_w) / 2
-	score_y: i32 = title_y + VICTORY_TITLE_FONT_SIZE + 8
-	rl.DrawText(score_text, score_x + 1, score_y + 1, VICTORY_SCORE_FONT_SIZE, rl.BLACK)
-	rl.DrawText(score_text, score_x, score_y, VICTORY_SCORE_FONT_SIZE, rl.YELLOW)
 
 	t := run_time
 	if t < 0 {
@@ -874,29 +848,11 @@ draw_final_victory :: proc(score: Score_Stats, run_time: f32) {
 	mins := total_secs / 60
 	secs := total_secs % 60
 	time_text := fmt.ctprintf("TIME: %02d:%02d", mins, secs)
-	time_w := rl.MeasureText(time_text, VICTORY_SCORE_FONT_SIZE)
+	time_w := rl.MeasureText(time_text, VICTORY_TIME_FONT_SIZE)
 	time_x: i32 = (SCREEN_WIDTH - time_w) / 2
-	time_y: i32 = score_y + VICTORY_SCORE_FONT_SIZE + 4
-	rl.DrawText(time_text, time_x + 1, time_y + 1, VICTORY_SCORE_FONT_SIZE, rl.BLACK)
-	rl.DrawText(time_text, time_x, time_y, VICTORY_SCORE_FONT_SIZE, rl.WHITE)
-
-	row_y := time_y + VICTORY_SCORE_FONT_SIZE + 14
-	font := i32(FINAL_VICTORY_BREAKDOWN_FONT_SIZE)
-	for k in Score_Kind {
-		count := score.kills[k]
-		if count == 0 {
-			continue
-		}
-		label := score_kind_label(k)
-		value := fmt.ctprintf("%d = %d", count, count * score_kind_points(k))
-		value_w := rl.MeasureText(value, font)
-		rl.DrawText(label, FINAL_VICTORY_LABEL_X + 1, row_y + 1, font, rl.BLACK)
-		rl.DrawText(label, FINAL_VICTORY_LABEL_X, row_y, font, rl.WHITE)
-		value_x := i32(FINAL_VICTORY_VALUE_RIGHT_X) - value_w
-		rl.DrawText(value, value_x + 1, row_y + 1, font, rl.BLACK)
-		rl.DrawText(value, value_x, row_y, font, rl.YELLOW)
-		row_y += FINAL_VICTORY_LINE_GAP
-	}
+	time_y: i32 = title_y + VICTORY_TITLE_FONT_SIZE + 12
+	rl.DrawText(time_text, time_x + 1, time_y + 1, VICTORY_TIME_FONT_SIZE, rl.BLACK)
+	rl.DrawText(time_text, time_x, time_y, VICTORY_TIME_FONT_SIZE, rl.WHITE)
 
 	pre := cstring("PRESS")
 	tail := cstring("TO RETURN TO MAIN MENU")
@@ -948,14 +904,18 @@ draw_upgrade_choice :: proc(choices: []Player_Upgrade, cursor: int, rerolls_rema
 		)
 	}
 
-	// "[step icon] PICK    [confirm icon] CONFIRM" — same layout for kb/gp,
-	// just different icons.
+	// "[step] PICK   [confirm] CONFIRM   [reroll] REROLL" — same layout for
+	// kb/gp, just different icons. Reroll segment drops out when spent.
 	pick := cstring("PICK")
 	confirm := cstring("CONFIRM")
+	reroll_text := cstring("REROLL")
+	show_reroll := rerolls_remaining > 0
 	step_icon_w := input_hint_width(.Menu_Step_Horizontal, HINT_ICON_SIZE)
 	confirm_icon_w := input_hint_width(.Confirm, HINT_ICON_SIZE)
+	reroll_icon_w := input_hint_width(.Reroll, HINT_ICON_SIZE)
 	pick_w := rl.MeasureText(pick, VICTORY_PROMPT_FONT_SIZE)
 	confirm_w := rl.MeasureText(confirm, VICTORY_PROMPT_FONT_SIZE)
+	reroll_w := rl.MeasureText(reroll_text, VICTORY_PROMPT_FONT_SIZE)
 	section_gap: i32 = 16
 	hint_total :=
 		step_icon_w +
@@ -965,6 +925,9 @@ draw_upgrade_choice :: proc(choices: []Player_Upgrade, cursor: int, rerolls_rema
 		confirm_icon_w +
 		HINT_TEXT_GAP +
 		confirm_w
+	if show_reroll {
+		hint_total += section_gap + reroll_icon_w + HINT_TEXT_GAP + reroll_w
+	}
 	hint_x: i32 = (i32(SCREEN_WIDTH) - hint_total) / 2
 	hint_y: i32 = UPGRADE_CARDS_Y + UPGRADE_CARD_H + 10
 	icon_y := hint_y + (VICTORY_PROMPT_FONT_SIZE - HINT_ICON_SIZE) / 2
@@ -979,22 +942,12 @@ draw_upgrade_choice :: proc(choices: []Player_Upgrade, cursor: int, rerolls_rema
 	cursor += confirm_icon_w + HINT_TEXT_GAP
 	rl.DrawText(confirm, cursor + 1, hint_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
 	rl.DrawText(confirm, cursor, hint_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
-
-	// Reroll prompt: no dedicated icon assets for R / Y, so render as bracketed
-	// text glyphs to match the existing prompt aesthetic. Greyed out when spent.
-	if rerolls_remaining > 0 {
-		key := input_hint(cstring("[R]"), cstring("[Y]"))
-		reroll_text := cstring("REROLL")
-		key_w := rl.MeasureText(key, VICTORY_PROMPT_FONT_SIZE)
-		reroll_w := rl.MeasureText(reroll_text, VICTORY_PROMPT_FONT_SIZE)
-		total := key_w + HINT_TEXT_GAP + reroll_w
-		rx := (i32(SCREEN_WIDTH) - total) / 2
-		ry := hint_y + VICTORY_PROMPT_FONT_SIZE + 6
-		rl.DrawText(key, rx + 1, ry + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
-		rl.DrawText(key, rx, ry, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
-		tx := rx + key_w + HINT_TEXT_GAP
-		rl.DrawText(reroll_text, tx + 1, ry + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
-		rl.DrawText(reroll_text, tx, ry, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
+	if show_reroll {
+		cursor += confirm_w + section_gap
+		draw_input_hint(.Reroll, cursor, icon_y, HINT_ICON_SIZE)
+		cursor += reroll_icon_w + HINT_TEXT_GAP
+		rl.DrawText(reroll_text, cursor + 1, hint_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
+		rl.DrawText(reroll_text, cursor, hint_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
 	}
 }
 

@@ -133,9 +133,7 @@ input_confirm_pressed :: proc() -> bool {
 	return false
 }
 
-// Reroll on the post-mission upgrade picker. Keyboard R / gamepad Y. No icon
-// asset for either, so the upgrade screen draws a text prompt — keep this
-// distinct from the gameplay-only bindings (shrink bomb F/X, dash SPACE/B).
+// Reroll on the post-mission upgrade picker. Keyboard R / gamepad Y.
 input_reroll_pressed :: proc() -> bool {
 	if rl.IsKeyPressed(.R) {
 		return true
@@ -321,6 +319,7 @@ Input_Hint :: enum {
 	Pause,
 	Confirm,
 	Back,
+	Reroll,
 }
 
 // Source PNGs are 64x64; we downscale to HINT_ICON_SIZE on the 640x360 render
@@ -336,6 +335,7 @@ hint_textures: struct {
 	kb_space:         rl.Texture2D,
 	kb_shift:         rl.Texture2D,
 	kb_f:             rl.Texture2D,
+	kb_r:             rl.Texture2D,
 	kb_escape:        rl.Texture2D,
 	kb_enter:         rl.Texture2D,
 	// Xbox-style gamepad
@@ -347,6 +347,7 @@ hint_textures: struct {
 	gp_button_a:      rl.Texture2D,
 	gp_button_b:      rl.Texture2D,
 	gp_button_x:      rl.Texture2D,
+	gp_button_y:      rl.Texture2D,
 	gp_button_menu:   rl.Texture2D,
 }
 
@@ -364,6 +365,7 @@ init_input_hints :: proc() {
 	hint_textures.kb_space = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_space.png")
 	hint_textures.kb_shift = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_shift.png")
 	hint_textures.kb_f = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_f.png")
+	hint_textures.kb_r = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_r.png")
 	hint_textures.kb_escape = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_escape.png")
 	hint_textures.kb_enter = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_enter.png")
 
@@ -375,6 +377,7 @@ init_input_hints :: proc() {
 	hint_textures.gp_button_a = load_hint_texture("assets/tiles/Default/xbox_button_color_a.png")
 	hint_textures.gp_button_b = load_hint_texture("assets/tiles/Default/xbox_button_color_b.png")
 	hint_textures.gp_button_x = load_hint_texture("assets/tiles/Default/xbox_button_color_x.png")
+	hint_textures.gp_button_y = load_hint_texture("assets/tiles/Default/xbox_button_color_y.png")
 	hint_textures.gp_button_menu = load_hint_texture("assets/tiles/Default/xbox_button_menu.png")
 }
 
@@ -385,6 +388,7 @@ unload_input_hints :: proc() {
 	rl.UnloadTexture(hint_textures.kb_space)
 	rl.UnloadTexture(hint_textures.kb_shift)
 	rl.UnloadTexture(hint_textures.kb_f)
+	rl.UnloadTexture(hint_textures.kb_r)
 	rl.UnloadTexture(hint_textures.kb_escape)
 	rl.UnloadTexture(hint_textures.kb_enter)
 	rl.UnloadTexture(hint_textures.gp_stick_l)
@@ -395,6 +399,7 @@ unload_input_hints :: proc() {
 	rl.UnloadTexture(hint_textures.gp_button_a)
 	rl.UnloadTexture(hint_textures.gp_button_b)
 	rl.UnloadTexture(hint_textures.gp_button_x)
+	rl.UnloadTexture(hint_textures.gp_button_y)
 	rl.UnloadTexture(hint_textures.gp_button_menu)
 }
 
@@ -436,6 +441,9 @@ hint_icons :: proc(kind: Input_Hint, out: ^[2]rl.Texture2D) -> int {
 		return 1
 	case .Back:
 		out[0] = on_gamepad ? hint_textures.gp_button_b : hint_textures.kb_escape
+		return 1
+	case .Reroll:
+		out[0] = on_gamepad ? hint_textures.gp_button_y : hint_textures.kb_r
 		return 1
 	}
 	return 0
