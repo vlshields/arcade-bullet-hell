@@ -413,7 +413,9 @@ bg_path :: proc(level: int, i: int) -> cstring {
 		// Ancient Guardian fight reuses the wave shader with its own backdrop.
 		return "assets/level3_bg.png"
 	}
-	// Level 4 reuses the level-2 parallax stack for now.
+	if level == 4 {
+		return "assets/parallaxbglvl4.png"
+	}
 	return fmt.ctprintf("assets/level2_parallaxbg%d.png", i)
 }
 

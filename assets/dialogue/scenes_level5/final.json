@@ -1,0 +1,27 @@
+{
+    "scenes": [
+        {
+            "scene_id": "l502",
+            "wave_id": [
+                { "id": "guardian", "when": "after", "once_completed": "victory_screen" }
+            ],
+            "lines": [
+
+                {
+                    "speaker": "player_zombi",
+                    "dialogue_box_animation": "player_zombi_dialogue_icon.png",
+                    "text": "And stay down! You... Weird old thing!"
+                },
+                {
+                    "speaker": "captain_paprika",
+                    "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
+                    "text": "YOU DID IT! You are a hero Zombi!!"
+                }
+
+      
+            ]
+
+        }
+
+    ]
+}

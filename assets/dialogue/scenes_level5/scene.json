@@ -3,7 +3,7 @@
         {
             "scene_id": "l501",
             "wave_id": [
-                { "id": "guardian", "when": "during", "once_completed": "nothing" }
+                { "id": "guardian", "when": "before", "once_completed": "nothing" }
             ],
             "lines": [
 
@@ -18,4 +18,4 @@
         }
 
     ]
-}
+}Shoot them in the correct order!

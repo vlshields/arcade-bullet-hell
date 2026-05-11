@@ -55,7 +55,7 @@
                     "speaker": "captain_paprika",
                     "line_id": "paprika_hint_03",
                     "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
-                    "text": "Try also using your special shrink ability {shrink}!"
+                    "text": "You also can deploy a shrink bomb {shrink} three times per misson!"
                    
                 }
        
@@ -86,7 +86,7 @@
         {
             "scene_id": "hint_03",
             "wave_id": [
-                { "id": "boss_golgatha", "when": "during", "once_completed": null }
+                { "id": "04", "when": "before", "once_completed": "wave_begins" }
             ],
             "lines": [
 

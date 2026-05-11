@@ -5,13 +5,13 @@ SCREEN_HEIGHT :: 360 // px
 
 BG_LAYERS :: 3 
 
-MUSIC_VOLUME :: 0.2 // multiplier [0..1]
-SFX_VOLUME :: 0.6 // multiplier [0..1]
+MUSIC_VOLUME :: 0.5 // multiplier [0..1]
+SFX_VOLUME :: 0.5 // multiplier [0..1]
 
 GAMEPAD_ID :: 0 
 STICK_DEADZONE :: 0.2 // [0..1]
 
-PLAYER_SPEED :: 95.0 // px/s
+PLAYER_SPEED :: 105.0 // px/s
 PLAYER_MAX_HP :: 125 // hp
 PLAYER_HIT_DAMAGE :: 3 // hp/hit
 PLAYER_HIT_RADIUS :: 4.0 // px
@@ -164,9 +164,10 @@ MORGAN_ORB_DRAW_RADIUS :: 11.0 // px
 MORGAN_ORB_BURST_COUNT :: 18 
 MORGAN_ORB_BURST_SPEED :: 80.0 // px/s
 MORGAN_P2_SNEAK_INTERVAL :: 3.5 // s
+MORGAN_SNEAK_CAP :: 3
 
-SNEAK_MAX :: 6 
-LEVEL1_SNEAK_CAP :: 2 
+SNEAK_MAX :: 6
+LEVEL1_SNEAK_CAP :: 2
 SNEAK_SPAWN_CHANCE :: 0.5 // probability [0..1]
 SNEAK_FRAME_W :: 16 // px
 SNEAK_FRAME_H :: 16 // px

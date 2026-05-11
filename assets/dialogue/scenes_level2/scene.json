@@ -9,7 +9,7 @@
                 {
                     "speaker": "player_zombi",
                     "dialogue_box_animation": "player_zombi_dialogue_icon.png",
-                    "text": "So what's the missin now, Captain?"
+                    "text": "So what's the mission now, Captain?"
                 },
                 {
                     "speaker": "captain_paprika",
@@ -25,6 +25,11 @@
                     "speaker": "captain_paprika",
                     "dialogue_box_animation": "captain_paprika_dialogue_icon.png",
                     "text": "Yeah, his hideout should be just up ahead..."
+                },
+                {
+                "speaker": "player_zombi",
+                "dialogue_box_animation": "player_zombi_dialogue_icon.png",
+                "text": "I wonder... What else is the enemy hiding way out here..."
                 }
             ]
 

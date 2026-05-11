@@ -724,6 +724,9 @@ effective_sneak_cap :: proc(pool: ^Sneak_Pool) -> int {
 	if pool.level <= 1 {
 		return LEVEL1_SNEAK_CAP
 	}
+	if pool.level == 3 {
+		return MORGAN_SNEAK_CAP
+	}
 	return SNEAK_MAX
 }
 
