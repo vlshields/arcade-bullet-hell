@@ -875,6 +875,7 @@ Level4_Phase :: enum {
 	Wave2_WG,
 	Wave3_Grunts,
 	Wave4_Pillars,
+	Wave5_Pillars2,
 }
 
 reset_level4_pacing :: proc(enemies: ^Enemy_Pool) {
@@ -921,7 +922,9 @@ on_enter_phase_l4 :: proc(enemies: ^Enemy_Pool, pillars: ^Pillar_Wave) {
 	case .Wave2_WG:
 		spawn_weirdguys_for_phase(enemies)
 	case .Wave4_Pillars:
-		spawn_pillar_wave(pillars)
+		spawn_pillar_wave(pillars, 1)
+	case .Wave5_Pillars2:
+		spawn_pillar_wave(pillars, 2)
 	}
 }
 
@@ -932,7 +935,7 @@ phase_complete_l4 :: proc(enemies: ^Enemy_Pool, pillars: ^Pillar_Wave) -> bool {
 		return !any_grunt_alive(enemies)
 	case .Wave2_WG:
 		return !any_weirdguy_alive(enemies)
-	case .Wave4_Pillars:
+	case .Wave4_Pillars, .Wave5_Pillars2:
 		return pillar_wave_complete(pillars)
 	}
 	return false
@@ -949,7 +952,9 @@ advance_phase_l4 :: proc(enemies: ^Enemy_Pool) {
 	case .Wave3_Grunts:
 		next = .Wave4_Pillars
 	case .Wave4_Pillars:
-		next = .Wave4_Pillars
+		next = .Wave5_Pillars2
+	case .Wave5_Pillars2:
+		next = .Wave5_Pillars2
 	}
 	enemies.level4_phase = next
 	enemies.level4_phase_started = false

@@ -1089,18 +1089,14 @@ draw_cyclops_one :: proc(pool: ^Sneak_Pool, s: ^Sneak) {
 // #region Enemy Pillars
 
 
-// Final wave of level 4. Four pillars spawn one per screen corner with a
-// random 1..4 number assignment. Numbers are visible for PILLAR_REVEAL_DUR
+// Final two waves of level 4. Round 1 spawns 4 pillars at the screen corners
+// numbered 1..4; round 2 spawns 6 pillars in a 2x3 grid numbered 1..6 with
+// two extra spiral arms each. Numbers are visible for PILLAR_REVEAL_DUR
 // seconds, then PILLAR_SHUFFLE_COUNT shuffles smoothly reposition the pillars.
 // During Combat only the pillar whose number matches next_kill takes damage;
 // out-of-order shots are absorbed without harm. Each pillar fires a continuous
-// spiral; spin direction is bound to the corner so diagonally opposite
-// pillars always rotate in opposite directions.
-//
-// Per-corner spin assignment:
-//   0 (TL): +1     1 (TR): -1
-//   3 (BL): +1     2 (BR): -1
-// Diagonals: TL/BR opposite, TR/BL opposite. spin_dir is rebound when a
+// spiral; spin direction is bound to the position so diagonally opposite
+// pillars always rotate in opposite directions. spin_dir is rebound when a
 // shuffle settles so the rule survives reshuffling.
 
 Pillar_Phase :: enum {
@@ -1126,13 +1122,15 @@ Pillar :: struct {
 }
 
 Pillar_Wave :: struct {
-	pillars:       [PILLAR_COUNT]Pillar,
+	pillars:       [PILLAR_MAX]Pillar,
 	tex:           rl.Texture2D,
 	flash_shader:  rl.Shader,
 	phase:         Pillar_Phase,
 	phase_t:       f32,
 	shuffles_done: int,
 	next_kill:     int,
+	count:         int,
+	bursts:        int,
 }
 
 init_pillars :: proc(wave: ^Pillar_Wave) {
@@ -1148,30 +1146,48 @@ unload_pillars :: proc(wave: ^Pillar_Wave) {
 }
 
 clear_pillars :: proc(wave: ^Pillar_Wave) {
-	for i in 0 ..< PILLAR_COUNT {
+	for i in 0 ..< PILLAR_MAX {
 		wave.pillars[i].active = false
 	}
 	wave.phase = .Idle
 	wave.phase_t = 0
 	wave.shuffles_done = 0
 	wave.next_kill = 0
+	wave.count = 0
+	wave.bursts = 0
 }
 
-spawn_pillar_wave :: proc(wave: ^Pillar_Wave) {
-	nums: [PILLAR_COUNT]int = {1, 2, 3, 4}
-	for i := PILLAR_COUNT - 1; i > 0; i -= 1 {
+spawn_pillar_wave :: proc(wave: ^Pillar_Wave, round: int) {
+	count := PILLAR_R1_COUNT
+	bursts := PILLAR_R1_BULLETS_PER_BURST
+	if round == 2 {
+		count = PILLAR_R2_COUNT
+		bursts = PILLAR_R2_BULLETS_PER_BURST
+	}
+	wave.count = count
+	wave.bursts = bursts
+
+	nums: [PILLAR_MAX]int
+	for i in 0 ..< count {
+		nums[i] = i + 1
+	}
+	for i := count - 1; i > 0; i -= 1 {
 		j := int(rand.uint32() % u32(i + 1))
 		nums[i], nums[j] = nums[j], nums[i]
 	}
-	for i in 0 ..< PILLAR_COUNT {
-		c := corner_pos(i)
+	for i in 0 ..< PILLAR_MAX {
+		if i >= count {
+			wave.pillars[i].active = false
+			continue
+		}
+		c := pillar_slot_pos(count, i)
 		wave.pillars[i] = Pillar {
 			number     = nums[i],
 			pos        = c,
 			from_pos   = c,
 			to_pos     = c,
 			hp         = PILLAR_HP,
-			spin_dir   = corner_spin(i),
+			spin_dir   = pillar_slot_spin(count, i),
 			base_angle = rand.float32() * math.TAU,
 			active     = true,
 		}
@@ -1187,7 +1203,7 @@ update_pillars :: proc(wave: ^Pillar_Wave, bullets: ^Bullet_Pool, dt: f32) {
 		return
 	}
 
-	for i in 0 ..< PILLAR_COUNT {
+	for i in 0 ..< PILLAR_MAX {
 		p := &wave.pillars[i]
 		if !p.active {
 			continue
@@ -1221,7 +1237,7 @@ update_pillars :: proc(wave: ^Pillar_Wave, bullets: ^Bullet_Pool, dt: f32) {
 			progress = 1
 		}
 		eased := smoothstep(progress)
-		for i in 0 ..< PILLAR_COUNT {
+		for i in 0 ..< PILLAR_MAX {
 			p := &wave.pillars[i]
 			if !p.active {
 				continue
@@ -1230,15 +1246,15 @@ update_pillars :: proc(wave: ^Pillar_Wave, bullets: ^Bullet_Pool, dt: f32) {
 			p.pos.y = p.from_pos.y + (p.to_pos.y - p.from_pos.y) * eased
 		}
 		if wave.phase_t >= PILLAR_SHUFFLE_DUR {
-			for i in 0 ..< PILLAR_COUNT {
+			for i in 0 ..< PILLAR_MAX {
 				p := &wave.pillars[i]
 				if !p.active {
 					continue
 				}
 				p.pos = p.to_pos
-				// Rebind spin_dir to the corner the pillar settled into so the
-				// "opposite corners spin opposite" invariant holds post-shuffle.
-				p.spin_dir = corner_spin(corner_index_for(p.pos))
+				// Rebind spin_dir to the slot the pillar settled into so the
+				// "opposite slots spin opposite" invariant holds post-shuffle.
+				p.spin_dir = pillar_slot_spin(wave.count, pillar_slot_index_for(wave.count, p.pos))
 			}
 			wave.shuffles_done += 1
 			if wave.shuffles_done >= PILLAR_SHUFFLE_COUNT {
@@ -1255,18 +1271,21 @@ update_pillars :: proc(wave: ^Pillar_Wave, bullets: ^Bullet_Pool, dt: f32) {
 
 @(private = "file")
 start_shuffle :: proc(wave: ^Pillar_Wave) {
-	perm: [PILLAR_COUNT]int = {0, 1, 2, 3}
+	perm: [PILLAR_MAX]int
+	for i in 0 ..< wave.count {
+		perm[i] = i
+	}
 	// Reshuffle until the permutation moves at least one pillar — pure identity
-	// would defeat the visual-tracking rule. 8 attempts is overkill (1/24 per
-	// try) but keeps the loop bounded.
+	// would defeat the visual-tracking rule. 8 attempts is overkill but keeps
+	// the loop bounded.
 	for attempt in 0 ..< 8 {
 		_ = attempt
-		for i := PILLAR_COUNT - 1; i > 0; i -= 1 {
+		for i := wave.count - 1; i > 0; i -= 1 {
 			j := int(rand.uint32() % u32(i + 1))
 			perm[i], perm[j] = perm[j], perm[i]
 		}
 		identity := true
-		for i in 0 ..< PILLAR_COUNT {
+		for i in 0 ..< wave.count {
 			if perm[i] != i {
 				identity = false
 				break
@@ -1276,13 +1295,13 @@ start_shuffle :: proc(wave: ^Pillar_Wave) {
 			break
 		}
 	}
-	for i in 0 ..< PILLAR_COUNT {
+	for i in 0 ..< PILLAR_MAX {
 		p := &wave.pillars[i]
 		if !p.active {
 			continue
 		}
 		p.from_pos = p.pos
-		p.to_pos = corner_pos(perm[i])
+		p.to_pos = pillar_slot_pos(wave.count, perm[i])
 	}
 	wave.phase = .Shuffle
 	wave.phase_t = 0
@@ -1292,8 +1311,8 @@ start_shuffle :: proc(wave: ^Pillar_Wave) {
 update_pillar_combat :: proc(wave: ^Pillar_Wave, bullets: ^Bullet_Pool, dt: f32) {
 	color := rl.Color{255, 220, 100, 255}
 	inc_rad: f32 = PILLAR_ANGLE_INC_DEG * math.PI / 180.0
-	row_step: f32 = math.TAU / f32(PILLAR_BULLETS_PER_BURST)
-	for i in 0 ..< PILLAR_COUNT {
+	row_step: f32 = math.TAU / f32(wave.bursts)
+	for i in 0 ..< PILLAR_MAX {
 		p := &wave.pillars[i]
 		if !p.active {
 			continue
@@ -1301,7 +1320,7 @@ update_pillar_combat :: proc(wave: ^Pillar_Wave, bullets: ^Bullet_Pool, dt: f32)
 		p.fire_timer += dt
 		for p.fire_timer >= PILLAR_FIRE_INTERVAL {
 			p.fire_timer -= PILLAR_FIRE_INTERVAL
-			for r in 0 ..< PILLAR_BULLETS_PER_BURST {
+			for r in 0 ..< wave.bursts {
 				ang := p.base_angle + f32(r) * row_step
 				vel := rl.Vector2 {
 					math.cos(ang) * PILLAR_BULLET_SPEED,
@@ -1324,7 +1343,7 @@ update_pillar_combat :: proc(wave: ^Pillar_Wave, bullets: ^Bullet_Pool, dt: f32)
 // Out-of-order shots and shots taken outside Combat absorb the projectile
 // (callers always treat the projectile as consumed) but apply no damage.
 damage_pillar :: proc(wave: ^Pillar_Wave, idx: int, amount: int) -> (applied: bool, killed: bool) {
-	if idx < 0 || idx >= PILLAR_COUNT {
+	if idx < 0 || idx >= PILLAR_MAX {
 		return false, false
 	}
 	p := &wave.pillars[idx]
@@ -1360,7 +1379,7 @@ pillar_wave_complete :: proc(wave: ^Pillar_Wave) -> bool {
 	if wave.phase != .Combat {
 		return false
 	}
-	for i in 0 ..< PILLAR_COUNT {
+	for i in 0 ..< PILLAR_MAX {
 		if wave.pillars[i].active {
 			return false
 		}
@@ -1368,8 +1387,28 @@ pillar_wave_complete :: proc(wave: ^Pillar_Wave) -> bool {
 	return true
 }
 
+// Round 1: four screen corners. Round 2: a 2x3 grid (top row TL/TM/TR, then
+// clockwise to BR/BM/BL). idx is the slot index within the current layout.
 @(private = "file")
-corner_pos :: proc(idx: int) -> rl.Vector2 {
+pillar_slot_pos :: proc(count, idx: int) -> rl.Vector2 {
+	if count == PILLAR_R2_COUNT {
+		mid_x: f32 = SCREEN_WIDTH * 0.5
+		switch idx {
+		case 0:
+			return {PILLAR_CORNER_MARGIN, PILLAR_CORNER_MARGIN}
+		case 1:
+			return {mid_x, PILLAR_CORNER_MARGIN}
+		case 2:
+			return {SCREEN_WIDTH - PILLAR_CORNER_MARGIN, PILLAR_CORNER_MARGIN}
+		case 3:
+			return {SCREEN_WIDTH - PILLAR_CORNER_MARGIN, SCREEN_HEIGHT - PILLAR_CORNER_MARGIN}
+		case 4:
+			return {mid_x, SCREEN_HEIGHT - PILLAR_CORNER_MARGIN}
+		case 5:
+			return {PILLAR_CORNER_MARGIN, SCREEN_HEIGHT - PILLAR_CORNER_MARGIN}
+		}
+		return {0, 0}
+	}
 	switch idx {
 	case 0:
 		return {PILLAR_CORNER_MARGIN, PILLAR_CORNER_MARGIN}
@@ -1383,8 +1422,17 @@ corner_pos :: proc(idx: int) -> rl.Vector2 {
 	return {0, 0}
 }
 
+// Spin assignment keeps every diagonally-opposite pair rotating in opposite
+// directions. Round 1 uses the existing TL/BL=+, TR/BR=- pattern. Round 2
+// goes top-row +, bottom-row - so all three vertical-diagonal pairs alternate.
 @(private = "file")
-corner_spin :: proc(idx: int) -> f32 {
+pillar_slot_spin :: proc(count, idx: int) -> f32 {
+	if count == PILLAR_R2_COUNT {
+		if idx < 3 {
+			return 1
+		}
+		return -1
+	}
 	switch idx {
 	case 0, 3:
 		return 1
@@ -1395,11 +1443,11 @@ corner_spin :: proc(idx: int) -> f32 {
 }
 
 @(private = "file")
-corner_index_for :: proc(p: rl.Vector2) -> int {
+pillar_slot_index_for :: proc(count: int, p: rl.Vector2) -> int {
 	best := 0
 	best_dsq: f32 = 1e9
-	for i in 0 ..< PILLAR_COUNT {
-		c := corner_pos(i)
+	for i in 0 ..< count {
+		c := pillar_slot_pos(count, i)
 		dx := p.x - c.x
 		dy := p.y - c.y
 		d := dx * dx + dy * dy
@@ -1415,7 +1463,7 @@ draw_pillars :: proc(wave: ^Pillar_Wave) {
 	if wave.phase == .Idle {
 		return
 	}
-	for i in 0 ..< PILLAR_COUNT {
+	for i in 0 ..< PILLAR_MAX {
 		p := &wave.pillars[i]
 		if !p.active {
 			continue
@@ -1435,7 +1483,7 @@ draw_pillars :: proc(wave: ^Pillar_Wave) {
 	}
 
 	if wave.phase == .Reveal {
-		for i in 0 ..< PILLAR_COUNT {
+		for i in 0 ..< PILLAR_MAX {
 			p := &wave.pillars[i]
 			if !p.active {
 				continue

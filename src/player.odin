@@ -719,7 +719,7 @@ fire_charge_beam :: proc(
 		}
 	}
 
-	for i in 0 ..< PILLAR_COUNT {
+	for i in 0 ..< PILLAR_MAX {
 		p := &pillars.pillars[i]
 		if !p.active {
 			continue

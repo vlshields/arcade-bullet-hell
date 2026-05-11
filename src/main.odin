@@ -62,6 +62,7 @@ Pending_Action :: enum {
 	None,
 	Start_Game,
 	Advance_Mission,
+	Reroll_Upgrade,
 }
 
 @(private = "file")
@@ -220,6 +221,9 @@ update :: proc() {
 				start_new_game()
 			case .Advance_Mission:
 				advance_to_next_mission()
+			case .Reroll_Upgrade:
+				gs.rerolls_remaining -= 1
+				open_upgrade_choice()
 			}
 			gs.transition_swapped = true
 			gs.pending_action = .None
@@ -322,15 +326,20 @@ update :: proc() {
 			}
 		}
 
-		if gs.victory && gs.choosing_upgrade {
+		if gs.victory && gs.choosing_upgrade && !gs.transitioning {
 			n := gs.upgrade_choice_count
 			step := input_menu_step_x()
 			if step != 0 && n > 0 {
 				gs.upgrade_cursor = (gs.upgrade_cursor + step + n) % n
 			}
 			if input_reroll_pressed() && gs.rerolls_remaining > 0 && n > 0 {
-				gs.rerolls_remaining -= 1
-				open_upgrade_choice()
+				// Decrement + reshuffle land at the fade's midpoint so the old
+				// cards fade out, the swap is hidden in black, and the new cards
+				// fade in — mirroring the inter-mission transition.
+				gs.transitioning = true
+				gs.transition_t = 0
+				gs.transition_swapped = false
+				gs.pending_action = .Reroll_Upgrade
 			}
 			if input_confirm_pressed() && n > 0 {
 				picked := gs.upgrade_choices[gs.upgrade_cursor]

@@ -202,7 +202,7 @@ collide_beams_enemies :: proc(
 			b.active = false
 			continue
 		}
-		for pi in 0 ..< PILLAR_COUNT {
+		for pi in 0 ..< PILLAR_MAX {
 			p := &pillars.pillars[pi]
 			if !p.active {
 				continue
@@ -511,7 +511,7 @@ lookup_source_center :: proc(
 		}
 		return boss_center(&boss.boss), true
 	case .Pillar:
-		if index < 0 || index >= PILLAR_COUNT {
+		if index < 0 || index >= PILLAR_MAX {
 			return
 		}
 		p := &pillars.pillars[index]
@@ -798,7 +798,7 @@ collide_bullets_enemies :: proc(
 		if hit {
 			continue
 		}
-		for pi in 0 ..< PILLAR_COUNT {
+		for pi in 0 ..< PILLAR_MAX {
 			p := &pillars.pillars[pi]
 			if !p.active {
 				continue
@@ -1160,7 +1160,7 @@ nearest_target :: proc(
 	// just waste the missile on a blocked impact, which is the cost of firing
 	// without aiming. The kill-order puzzle stays intact.
 	if pillars.phase == .Combat {
-		for i in 0 ..< PILLAR_COUNT {
+		for i in 0 ..< PILLAR_MAX {
 			p := &pillars.pillars[i]
 			if !p.active {
 				continue
@@ -1291,7 +1291,7 @@ try_hit_missile :: proc(
 			return true
 		}
 	}
-	for i in 0 ..< PILLAR_COUNT {
+	for i in 0 ..< PILLAR_MAX {
 		p := &pillars.pillars[i]
 		if !p.active {
 			continue
