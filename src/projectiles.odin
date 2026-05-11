@@ -10,11 +10,6 @@ Beam_Type :: enum {
 	Charge,
 }
 
-// `.Laser` is a moving projectile-style bolt: `start` is the tail, `end` is the
-// tip, both advance by `vel * dt` each frame. `damage` is per-target and the
-// bolt deactivates on first hit. `.Charge` stays hitscan: `start`/`end` define
-// a static fat beam, damage is applied once on release, and the visual fades
-// out over `max_life`.
 Beam :: struct {
 	type:      Beam_Type,
 	start:     rl.Vector2,
@@ -33,8 +28,6 @@ Beam_Pool :: struct {
 	beams: [MAX_BEAMS]Beam,
 }
 
-// Closest-point-on-segment distance vs radius. Used by laser-bolt collision so
-// a single test handles vertical vanilla bolts and angled Beam Blast bolts.
 beam_segment_hits :: proc(start, end, c: rl.Vector2, r: f32) -> bool {
 	seg := end - start
 	seg_len_sq := rl.Vector2DotProduct(seg, seg)
@@ -122,8 +115,6 @@ update_beams :: proc(pool: ^Beam_Pool, dt: f32) {
 		if b.type == .Laser {
 			b.start += b.vel * dt
 			b.end += b.vel * dt
-			// Off-screen safety: once both endpoints are clearly outside the
-			// playfield in the same direction, drop the bolt early.
 			margin: f32 = LASER_BOLT_LENGTH
 			if (b.start.y < -margin && b.end.y < -margin) ||
 			   (b.start.y > SCREEN_HEIGHT + margin && b.end.y > SCREEN_HEIGHT + margin) ||
@@ -135,9 +126,6 @@ update_beams :: proc(pool: ^Beam_Pool, dt: f32) {
 	}
 }
 
-// Per-frame collision pass for moving laser bolts. A bolt deactivates on its
-// first contact (no piercing). Charge beams are NOT processed here — they
-// damage at release time inside fire_charge_beam.
 collide_beams_enemies :: proc(
 	pool: ^Beam_Pool,
 	enemies: ^Enemy_Pool,
@@ -172,6 +160,7 @@ collide_beams_enemies :: proc(
 				try_drop_healthpack(packs, ec)
 				if e.kind == .WeirdGuy {
 					play_weirdguy_death_sfx(audio)
+					spawn_weirdguy_corpse(enemies, ec)
 				} else {
 					play_enemy_death_sfx(audio)
 				}
@@ -310,8 +299,8 @@ draw_beams :: proc(pool: ^Beam_Pool) {
 }
 
 draw_laser_beam :: proc(b: ^Beam) {
-	// Bolt stays full-bright while alive; it usually exits via hit or off-screen
-	// long before max_life. The tip carries a soft glow halo for projectile feel.
+	// Bolt stays full-bright while alive. 
+
 	glow := rl.RED
 	glow.a = 60
 	rl.DrawLineEx(b.start, b.end, LASER_THICKNESS * LASER_GLOW_MULT, glow)
@@ -350,7 +339,6 @@ draw_charge_beam :: proc(b: ^Beam) {
 	alpha := 1.0 - (b.lifetime / b.max_life)
 	thickness := b.thickness
 
-	// Multi-layer glow
 	for layer in 0 ..< 5 {
 		layer_t := f32(layer) / 5.0
 		glow := rl.MAGENTA
@@ -358,7 +346,6 @@ draw_charge_beam :: proc(b: ^Beam) {
 		rl.DrawLineEx(b.start, b.end, thickness * (2 - layer_t), glow)
 	}
 
-	// Electric fringes
 	dir := b.end - b.start
 	length := rl.Vector2Length(dir)
 	if length > 0.001 {
@@ -377,7 +364,6 @@ draw_charge_beam :: proc(b: ^Beam) {
 		}
 	}
 
-	// Bright core
 	core := rl.WHITE
 	core.a = u8(alpha * 255)
 	rl.DrawLineEx(b.start, b.end, thickness * 0.3, core)
@@ -386,20 +372,12 @@ draw_charge_beam :: proc(b: ^Beam) {
 
 // #region Bullets
 
-// Bullets are pooled and tagged. Enemy bullets damage the player; Reflected
-// bullets are former-enemy bullets the player turned by dashing through them
-// and now home toward enemies; Rapid_Fire bullets are spawned by the player's
-// Rapid Fire upgrade — they fly straight up at constant velocity and use the
-// laser color palette.
 Bullet_Kind :: enum {
 	Enemy,
 	Reflected,
 	Rapid_Fire,
 }
 
-// Tracks the entity that fired the bullet so the Riposte upgrade can home
-// reflected bullets back at it. .None means the bullet has no recoverable
-// source (player-side projectiles or burst children).
 Bullet_Source :: enum {
 	None,
 	Enemy,
@@ -416,23 +394,11 @@ Bullet :: struct {
 	color:     rl.Color,
 	kind:      Bullet_Kind,
 	active:    bool,
-	// Shrink-bomb state. Only set on Enemy bullets caught in a bomb. Ramps 0->1
-	// over SHRINK_BOMB_DURATION; while shrinking, hit radius and visuals scale by
-	// (1 - shrink_t), and the bullet deactivates once shrink_t hits 1.
 	shrinking: bool,
 	shrink_t:  f32,
-	// Morgan's energy-orb projectile: oversized .Enemy bullet that bursts into a
-	// MORGAN_ORB_BURST_COUNT-bullet ring on EOL. Visual + collision radius differ
-	// from the regular bullet path; collision hit-radius queried via bullet_hit_radius.
 	is_burst_orb: bool,
-	// Source entity that fired this bullet; used by Riposte to home a reflected
-	// bullet back at its original shooter.
 	source_kind:  Bullet_Source,
 	source_index: int,
-	// Set on reflection when the player owns Riposte. While true, the reflected
-	// bullet homes specifically at source_kind/source_index instead of the
-	// nearest-enemy fallback. Cleared if the source dies, so the bullet then
-	// re-acquires the nearest target.
 	lock_source:  bool,
 }
 
@@ -792,6 +758,7 @@ collide_bullets_enemies :: proc(
 					try_drop_healthpack(packs, ec)
 					if e.kind == .WeirdGuy {
 						play_weirdguy_death_sfx(audio)
+						spawn_weirdguy_corpse(enemies, ec)
 					} else {
 						play_enemy_death_sfx(audio)
 					}

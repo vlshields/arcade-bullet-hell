@@ -39,11 +39,20 @@ Enemy :: struct {
 	},
 }
 
+WeirdGuy_Corpse :: struct {
+	pos:        rl.Vector2,
+	frame:      int,
+	frame_time: f32,
+	active:     bool,
+}
+
 Enemy_Pool :: struct {
-	enemies:       [ENEMY_COUNT]Enemy,
-	tex:           rl.Texture2D,
-	weirdguy_tex:  rl.Texture2D,
-	flash_shader:  rl.Shader,
+	enemies:           [ENEMY_COUNT]Enemy,
+	weirdguy_corpses:  [WEIRDGUY_CORPSE_MAX]WeirdGuy_Corpse,
+	tex:               rl.Texture2D,
+	weirdguy_tex:      rl.Texture2D,
+	weirdguy_dies_tex: rl.Texture2D,
+	flash_shader:      rl.Shader,
 	level:         int,
 	waves_cleared: int,
 	fire_interval: f32,
@@ -67,6 +76,8 @@ init_enemies :: proc(pool: ^Enemy_Pool) {
 	rl.SetTextureFilter(pool.tex, .POINT)
 	pool.weirdguy_tex = rl.LoadTexture("assets/sprites/enemy_weirdguy_move.png")
 	rl.SetTextureFilter(pool.weirdguy_tex, .POINT)
+	pool.weirdguy_dies_tex = rl.LoadTexture("assets/sprites/enemy_weirdguy_dies.png")
+	rl.SetTextureFilter(pool.weirdguy_dies_tex, .POINT)
 	pool.flash_shader = load_flash_shader()
 	pool.level = 1
 	pool.waves_cleared = 0
@@ -78,7 +89,62 @@ init_enemies :: proc(pool: ^Enemy_Pool) {
 unload_enemies :: proc(pool: ^Enemy_Pool) {
 	rl.UnloadTexture(pool.tex)
 	rl.UnloadTexture(pool.weirdguy_tex)
+	rl.UnloadTexture(pool.weirdguy_dies_tex)
 	rl.UnloadShader(pool.flash_shader)
+}
+
+// Weird guys leave a brief death animation behind when killed. The corpse pool
+// is independent of the enemy slot — the slot is freed immediately so wave
+// gating and respawns aren't held up by the visual.
+spawn_weirdguy_corpse :: proc(pool: ^Enemy_Pool, pos: rl.Vector2) {
+	for i in 0 ..< WEIRDGUY_CORPSE_MAX {
+		c := &pool.weirdguy_corpses[i]
+		if c.active {
+			continue
+		}
+		c.pos = pos
+		c.frame = 0
+		c.frame_time = 0
+		c.active = true
+		return
+	}
+}
+
+update_weirdguy_corpses :: proc(pool: ^Enemy_Pool, dt: f32) {
+	for i in 0 ..< WEIRDGUY_CORPSE_MAX {
+		c := &pool.weirdguy_corpses[i]
+		if !c.active {
+			continue
+		}
+		c.frame_time += dt
+		for c.frame_time >= WEIRDGUY_DEATH_FRAME_DUR {
+			c.frame_time -= WEIRDGUY_DEATH_FRAME_DUR
+			if c.frame >= WEIRDGUY_DEATH_FRAMES - 1 {
+				c.active = false
+				break
+			}
+			c.frame += 1
+		}
+	}
+}
+
+draw_weirdguy_corpses :: proc(pool: ^Enemy_Pool) {
+	draw_w := f32(WEIRDGUY_FRAME_W * WEIRDGUY_DRAW_SCALE)
+	draw_h := f32(WEIRDGUY_FRAME_H * WEIRDGUY_DRAW_SCALE)
+	for i in 0 ..< WEIRDGUY_CORPSE_MAX {
+		c := &pool.weirdguy_corpses[i]
+		if !c.active {
+			continue
+		}
+		src := rl.Rectangle {
+			f32(c.frame * WEIRDGUY_FRAME_W),
+			0,
+			f32(WEIRDGUY_FRAME_W),
+			f32(WEIRDGUY_FRAME_H),
+		}
+		dst := rl.Rectangle{c.pos.x - draw_w * 0.5, c.pos.y - draw_h * 0.5, draw_w, draw_h}
+		rl.DrawTexturePro(pool.weirdguy_dies_tex, src, dst, {0, 0}, 0, rl.WHITE)
+	}
 }
 
 spawn_wave :: proc(pool: ^Enemy_Pool) {
@@ -267,6 +333,8 @@ update_enemies :: proc(
 			update_weirdguy_one(e, i, player_center, bullets, dt)
 		}
 	}
+
+	update_weirdguy_corpses(pool, dt)
 }
 
 @(private = "file")
@@ -366,6 +434,7 @@ update_weirdguy_one :: proc(
 }
 
 draw_enemies :: proc(pool: ^Enemy_Pool) {
+	draw_weirdguy_corpses(pool)
 	for i in 0 ..< ENEMY_COUNT {
 		e := &pool.enemies[i]
 		if !e.active {

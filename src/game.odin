@@ -53,6 +53,7 @@ Audio :: struct {
 	sfx_guardian_3:           rl.Sound,
 	sfx_laser:                rl.Sound,
 	sfx_morgan_chatter:       rl.Sound,
+	morgan_chatter_timer:     f32,
 	sfx_rapid_fire:           rl.Sound,
 	sfx_reflects_bullet:      rl.Sound,
 	sfx_shrink_bullets:       rl.Sound,
@@ -286,17 +287,24 @@ play_weirdguy_death_sfx :: proc(a: ^Audio) {
 	}
 }
 
-// Morgan ambient chatter — same retrigger-when-finished pattern as the
-// charging-beam cue. Tick every frame the boss is on the field, stop when
-// she leaves / dies / is between phases.
-tick_morgan_chatter_sfx :: proc(a: ^Audio) {
-	if !rl.IsSoundPlaying(a.sfx_morgan_chatter) {
+// Morgan ambient chatter — fires once when the cooldown expires, then waits a
+// randomized gap before the next play so she mutters intermittently rather
+// than looping nonstop. Caller ticks every frame she's on the field.
+tick_morgan_chatter_sfx :: proc(a: ^Audio, dt: f32) {
+	if rl.IsSoundPlaying(a.sfx_morgan_chatter) {
+		return
+	}
+	a.morgan_chatter_timer -= dt
+	if a.morgan_chatter_timer <= 0 {
 		rl.PlaySound(a.sfx_morgan_chatter)
+		span := f32(MORGAN_CHATTER_INTERVAL_MAX - MORGAN_CHATTER_INTERVAL_MIN)
+		a.morgan_chatter_timer = MORGAN_CHATTER_INTERVAL_MIN + rand.float32() * span
 	}
 }
 
 stop_morgan_chatter_sfx :: proc(a: ^Audio) {
 	rl.StopSound(a.sfx_morgan_chatter)
+	a.morgan_chatter_timer = 0
 }
 
 // Guardian intro: sounds 1 and 2 layered together for a thick stinger when
@@ -631,8 +639,8 @@ update_healthpacks :: proc(pool: ^HealthPack_Pool, player: ^Player, dt: f32) {
 		if dx * dx + dy * dy <= r_sq {
 			h.active = false
 			player.hp += HEALTHPACK_HEAL
-			if player.hp > PLAYER_MAX_HP {
-				player.hp = PLAYER_MAX_HP
+			if player.hp > player.max_hp {
+				player.hp = player.max_hp
 			}
 		}
 	}

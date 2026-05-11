@@ -133,6 +133,21 @@ input_confirm_pressed :: proc() -> bool {
 	return false
 }
 
+// Reroll on the post-mission upgrade picker. Keyboard R / gamepad Y. No icon
+// asset for either, so the upgrade screen draws a text prompt — keep this
+// distinct from the gameplay-only bindings (shrink bomb F/X, dash SPACE/B).
+input_reroll_pressed :: proc() -> bool {
+	if rl.IsKeyPressed(.R) {
+		return true
+	}
+	if rl.IsGamepadAvailable(GAMEPAD_ID) {
+		if rl.IsGamepadButtonPressed(GAMEPAD_ID, .RIGHT_FACE_UP) {
+			return true
+		}
+	}
+	return false
+}
+
 // Edge-detected horizontal nudge for menus. Returns -1 / 0 / +1 the frame the
 // user taps left/right; held keys do not auto-repeat. Uses dpad + face buttons
 // on gamepad; the analog stick is intentionally excluded so a held stick during

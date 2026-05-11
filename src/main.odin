@@ -43,6 +43,9 @@ Game_State :: struct {
 	upgrade_choices:      [3]Player_Upgrade,
 	upgrade_choice_count: int,
 	upgrade_cursor:       int,
+	// Per-run reroll budget for the upgrade picker. Resets to UPGRADE_REROLLS_PER_RUN
+	// on start_new_game; decrements each time the player reshuffles the cards.
+	rerolls_remaining:    int,
 	paused:             bool,
 	pause:              Pause_Menu,
 	show_timer:         bool,
@@ -122,6 +125,7 @@ start_new_game :: proc() {
 	gs.choosing_upgrade = false
 	gs.upgrade_choice_count = 0
 	gs.upgrade_cursor = 0
+	gs.rerolls_remaining = UPGRADE_REROLLS_PER_RUN
 
 	reset_player_for_new_game(&gs.player)
 
@@ -326,8 +330,14 @@ update :: proc() {
 			if step != 0 && n > 0 {
 				gs.upgrade_cursor = (gs.upgrade_cursor + step + n) % n
 			}
+			if input_reroll_pressed() && gs.rerolls_remaining > 0 && n > 0 {
+				gs.rerolls_remaining -= 1
+				open_upgrade_choice()
+			}
 			if input_confirm_pressed() && n > 0 {
-				gs.player.upgrades += {gs.upgrade_choices[gs.upgrade_cursor]}
+				picked := gs.upgrade_choices[gs.upgrade_cursor]
+				gs.player.upgrades += {picked}
+				apply_upgrade_stats(&gs.player, picked)
 				gs.choosing_upgrade = false
 			}
 		} else if gs.victory && !gs.transitioning && input_confirm_pressed() {
@@ -497,9 +507,10 @@ update :: proc() {
 		stop_golgotha_bullet_hell_sfx(&gs.audio)
 	}
 
-	// Morgan ambient chatter mirrors the Golgatha loop — retrigger every frame
-	// the boss is on the field, stop on pause / victory / transition / death /
-	// inter-phase pause so the cue lines up with what the player sees.
+	// Morgan's chatter is intermittent — tick_morgan_chatter_sfx waits out a
+	// randomized gap between plays so she mutters rather than looping. Stop on
+	// pause / victory / transition / death / inter-phase pause to keep cues
+	// aligned with what the player sees.
 	morgan_chattering :=
 		gs.boss.boss.active &&
 		gs.boss.boss.kind == .Morgan &&
@@ -509,7 +520,7 @@ update :: proc() {
 		!gs.victory &&
 		!gs.transitioning
 	if morgan_chattering {
-		tick_morgan_chatter_sfx(&gs.audio)
+		tick_morgan_chatter_sfx(&gs.audio, dt)
 	} else {
 		stop_morgan_chatter_sfx(&gs.audio)
 	}
@@ -560,6 +571,7 @@ update :: proc() {
 			draw_upgrade_choice(
 				gs.upgrade_choices[:gs.upgrade_choice_count],
 				gs.upgrade_cursor,
+				gs.rerolls_remaining,
 			)
 		}
 	}
@@ -904,7 +916,7 @@ draw_final_victory :: proc(score: Score_Stats, run_time: f32) {
 	rl.DrawText(tail, tail_x, prompt_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
 }
 
-draw_upgrade_choice :: proc(choices: []Player_Upgrade, cursor: int) {
+draw_upgrade_choice :: proc(choices: []Player_Upgrade, cursor: int, rerolls_remaining: int) {
 	n := i32(len(choices))
 	if n == 0 {
 		return
@@ -967,6 +979,23 @@ draw_upgrade_choice :: proc(choices: []Player_Upgrade, cursor: int) {
 	cursor += confirm_icon_w + HINT_TEXT_GAP
 	rl.DrawText(confirm, cursor + 1, hint_y + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
 	rl.DrawText(confirm, cursor, hint_y, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
+
+	// Reroll prompt: no dedicated icon assets for R / Y, so render as bracketed
+	// text glyphs to match the existing prompt aesthetic. Greyed out when spent.
+	if rerolls_remaining > 0 {
+		key := input_hint(cstring("[R]"), cstring("[Y]"))
+		reroll_text := cstring("REROLL")
+		key_w := rl.MeasureText(key, VICTORY_PROMPT_FONT_SIZE)
+		reroll_w := rl.MeasureText(reroll_text, VICTORY_PROMPT_FONT_SIZE)
+		total := key_w + HINT_TEXT_GAP + reroll_w
+		rx := (i32(SCREEN_WIDTH) - total) / 2
+		ry := hint_y + VICTORY_PROMPT_FONT_SIZE + 6
+		rl.DrawText(key, rx + 1, ry + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
+		rl.DrawText(key, rx, ry, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
+		tx := rx + key_w + HINT_TEXT_GAP
+		rl.DrawText(reroll_text, tx + 1, ry + 1, VICTORY_PROMPT_FONT_SIZE, rl.BLACK)
+		rl.DrawText(reroll_text, tx, ry, VICTORY_PROMPT_FONT_SIZE, rl.WHITE)
+	}
 }
 
 @(private = "file")
@@ -1016,8 +1045,39 @@ upgrade_card_info :: proc(
 			"launches 1 extra homing missle",
 			"at no extra stamina cost.",
 			rl.Color{255, 220, 120, 255}
+	case .Vitality:
+		return "VITALITY",
+			"Toughens your body",
+			"and increases your maximum",
+			"health by 25.",
+			rl.Color{120, 230, 120, 255}
+	case .Endurance:
+		return "ENDURANCE",
+			"Trains your stamina",
+			"and increases your maximum",
+			"stamina by 25.",
+			rl.Color{255, 240, 140, 255}
+	case .Heart_Of_Steel:
+		return "HEART OF STEEL",
+			"You recover stamina",
+			"30% more quickly",
+			"",
+			rl.Color{210, 220, 235, 255}
 	}
 	return
+}
+
+@(private = "file")
+apply_upgrade_stats :: proc(p: ^Player, u: Player_Upgrade) {
+	switch u {
+	case .Vitality:
+		p.max_hp += 25
+		p.hp += 25
+	case .Endurance:
+		p.max_stamina += 25
+		p.stamina += 25
+	case .Slow_Time, .Dash_Frenzy, .Rapid_Fire, .Beam_Blast, .Riposte, .Lucky_Shot, .Heart_Of_Steel:
+	}
 }
 
 // Builds the upgrade pool from {all upgrades} - {already owned}, with the
@@ -1026,7 +1086,7 @@ upgrade_card_info :: proc(
 // pool is empty (all relevant upgrades owned) the picker is skipped entirely.
 @(private = "file")
 open_upgrade_choice :: proc() {
-	pool: [6]Player_Upgrade
+	pool: [len(Player_Upgrade)]Player_Upgrade
 	n := 0
 	for u in Player_Upgrade {
 		if u in gs.player.upgrades {
@@ -1150,7 +1210,7 @@ advance_to_next_mission :: proc() {
 	if gs.level == 5 {
 		spawn_ancient_guardian(&gs.boss)
 	}
-	gs.player.hp = PLAYER_MAX_HP
+	gs.player.hp = gs.player.max_hp
 	gs.player.shrink_bombs = SHRINK_BOMBS_PER_LEVEL
 	show_mission_title(&gs.mission_title, gs.level)
 }

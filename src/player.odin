@@ -21,6 +21,9 @@ Player_Upgrade :: enum {
 	Beam_Blast,
 	Riposte,
 	Lucky_Shot,
+	Vitality,
+	Endurance,
+	Heart_Of_Steel,
 }
 
 Player_Upgrade_Set :: bit_set[Player_Upgrade]
@@ -32,7 +35,9 @@ Player :: struct {
 	frame_time:         f32,
 	frame:              int,
 	hp:                 int,
+	max_hp:             int,
 	stamina:            f32,
+	max_stamina:        f32,
 	invuln_timer:       f32,
 	fire_timer:         f32,
 	hold_time:          f32,
@@ -82,8 +87,10 @@ reset_player_for_new_game :: proc(p: ^Player) {
 	p.facing_left = false
 	p.frame_time = 0
 	p.frame = 0
-	p.hp = PLAYER_MAX_HP
-	p.stamina = PLAYER_MAX_STAMINA
+	p.max_hp = PLAYER_MAX_HP
+	p.hp = p.max_hp
+	p.max_stamina = PLAYER_MAX_STAMINA
+	p.stamina = p.max_stamina
 	p.invuln_timer = 0
 	p.fire_timer = 0
 	p.hold_time = 0
@@ -204,10 +211,14 @@ update_player :: proc(p: ^Player, missiles: ^Missile_Pool, audio: ^Audio, dt: f3
 		}
 	}
 
-	if p.stamina < PLAYER_MAX_STAMINA && !p.slow_time_active {
-		p.stamina += PLAYER_STAMINA_RECOVER_RATE * dt
-		if p.stamina > PLAYER_MAX_STAMINA {
-			p.stamina = PLAYER_MAX_STAMINA
+	if p.stamina < p.max_stamina && !p.slow_time_active {
+		rate := f32(PLAYER_STAMINA_RECOVER_RATE)
+		if .Heart_Of_Steel in p.upgrades {
+			rate *= HEART_OF_STEEL_RECOVER_MULT
+		}
+		p.stamina += rate * dt
+		if p.stamina > p.max_stamina {
+			p.stamina = p.max_stamina
 		}
 	}
 
@@ -390,7 +401,7 @@ draw_player_hud :: proc(p: ^Player) {
 	if hp < 0 {
 		hp = 0
 	}
-	hp_fill_w := i32(f32(HP_BAR_W) * f32(hp) / f32(PLAYER_MAX_HP))
+	hp_fill_w := i32(f32(HP_BAR_W) * f32(hp) / f32(p.max_hp))
 	if hp_fill_w > 0 {
 		rl.DrawRectangle(x, hp_y, hp_fill_w, HP_BAR_H, rl.Color{220, 60, 60, 255})
 	}
@@ -401,7 +412,7 @@ draw_player_hud :: proc(p: ^Player) {
 	if stam < 0 {
 		stam = 0
 	}
-	stam_fill_w := i32(f32(HP_BAR_W) * stam / PLAYER_MAX_STAMINA)
+	stam_fill_w := i32(f32(HP_BAR_W) * stam / p.max_stamina)
 	if stam_fill_w > 0 {
 		rl.DrawRectangle(x, stam_y, stam_fill_w, HP_BAR_H, rl.Color{80, 180, 240, 255})
 	}
@@ -611,6 +622,7 @@ fire_charge_beam :: proc(
 			try_drop_healthpack(packs, ec)
 			if e.kind == .WeirdGuy {
 				play_weirdguy_death_sfx(audio)
+				spawn_weirdguy_corpse(enemies, ec)
 			} else {
 				play_enemy_death_sfx(audio)
 			}
