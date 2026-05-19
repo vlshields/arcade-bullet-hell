@@ -24,9 +24,6 @@ Game_State :: struct {
 	scale:              f32,
 	offset_x:           f32,
 	offset_y:           f32,
-	mouse_x:            int,
-	mouse_y:            int,
-	mouse_down:         bool,
 	level:              int,
 	transitioning:      bool,
 	transition_t:       f32,
@@ -54,6 +51,10 @@ Game_State :: struct {
 	main_menu:          Main_Menu,
 	pending_action:     Pending_Action,
 	mission_title:      Mission_Title,
+	// Death state. game_over_t accumulates real seconds since the player's HP
+	// hit 0 and drives the title's easing-in animation + the confirm-input gate.
+	game_over:          bool,
+	game_over_t:        f32,
 }
 
 // What the transition fade resolves to at its midpoint. Lets the same fade
@@ -125,6 +126,8 @@ start_new_game :: proc() {
 	gs.upgrade_choice_count = 0
 	gs.upgrade_cursor = 0
 	gs.rerolls_remaining = UPGRADE_REROLLS_PER_RUN
+	gs.game_over = false
+	gs.game_over_t = 0
 
 	reset_player_for_new_game(&gs.player)
 
@@ -170,6 +173,8 @@ return_to_main_menu :: proc() {
 	gs.transition_swapped = false
 	gs.choosing_upgrade = false
 	gs.upgrade_choice_count = 0
+	gs.game_over = false
+	gs.game_over_t = 0
 	gs.dialogue.active = false
 	gs.mission_title.active = false
 	gs.pending_action = .None
@@ -260,7 +265,7 @@ update :: proc() {
 	// opening and immediately closing the menu on the same frame.
 	just_opened_pause := false
 	if !gs.paused {
-		if input_pause_toggle_pressed() && !gs.victory && !gs.transitioning {
+		if input_pause_toggle_pressed() && !gs.victory && !gs.transitioning && !gs.game_over {
 			gs.paused = true
 			reset_pause_menu(&gs.pause)
 			just_opened_pause = true
@@ -276,11 +281,33 @@ update :: proc() {
 		return
 	}
 
-	if !gs.paused && !gs.victory {
+	if !gs.paused && !gs.victory && !gs.game_over {
 		gs.run_time += dt
 	}
 
-	if !gs.paused {
+	// HP reaching 0 from any damage source freezes gameplay into a death screen.
+	// Checked here so the same frame the killing blow lands transitions cleanly,
+	// without any further bullet/enemy updates ticking under the overlay.
+	if !gs.paused && !gs.game_over && !gs.victory && gs.player.hp <= 0 {
+		enter_game_over()
+	}
+
+	if !gs.paused && gs.game_over {
+		gs.game_over_t += dt
+		// Background keeps scrolling under the death overlay so the screen
+		// doesn't feel completely frozen.
+		update_background(&gs.background, dt)
+		if !gs.transitioning &&
+		   gs.game_over_t >= GAME_OVER_INPUT_DELAY &&
+		   input_confirm_pressed() {
+			play_ui_confirm_sfx(&gs.audio)
+			return_to_main_menu()
+			draw_menu_frame()
+			return
+		}
+	}
+
+	if !gs.paused && !gs.game_over {
 		if gs.boss.boss.defeated && !gs.victory && !gs.victory_pending {
 			gs.victory_pending = true
 			gs.victory_delay_t = VICTORY_DELAY
@@ -331,6 +358,7 @@ update :: proc() {
 			step := input_menu_step_x()
 			if step != 0 && n > 0 {
 				gs.upgrade_cursor = (gs.upgrade_cursor + step + n) % n
+				play_ui_navigate_sfx(&gs.audio)
 			}
 			if input_reroll_pressed() && gs.rerolls_remaining > 0 && n > 0 {
 				// Decrement + reshuffle land at the fade's midpoint so the old
@@ -340,12 +368,14 @@ update :: proc() {
 				gs.transition_t = 0
 				gs.transition_swapped = false
 				gs.pending_action = .Reroll_Upgrade
+				play_ui_confirm_sfx(&gs.audio)
 			}
 			if input_confirm_pressed() && n > 0 {
 				picked := gs.upgrade_choices[gs.upgrade_cursor]
 				gs.player.upgrades += {picked}
 				apply_upgrade_stats(&gs.player, picked)
 				gs.choosing_upgrade = false
+				play_ui_confirm_sfx(&gs.audio)
 			}
 		} else if gs.victory && !gs.transitioning && input_confirm_pressed() {
 			if gs.level < MAX_LEVEL {
@@ -353,7 +383,9 @@ update :: proc() {
 				gs.transition_t = 0
 				gs.transition_swapped = false
 				gs.pending_action = .Advance_Mission
+				play_ui_confirm_sfx(&gs.audio)
 			} else {
+				play_ui_confirm_sfx(&gs.audio)
 				return_to_main_menu()
 				draw_menu_frame()
 				return
@@ -500,7 +532,8 @@ update :: proc() {
 	   gs.boss.boss.kind == .Golgatha &&
 	   !gs.paused &&
 	   !gs.victory &&
-	   !gs.transitioning {
+	   !gs.transitioning &&
+	   !gs.game_over {
 		if !gs.boss.boss.scream_played {
 			play_golgotha_scream_sfx(&gs.audio)
 			gs.boss.boss.scream_played = true
@@ -521,7 +554,8 @@ update :: proc() {
 		!boss_phase_pausing(&gs.boss.boss) &&
 		!gs.paused &&
 		!gs.victory &&
-		!gs.transitioning
+		!gs.transitioning &&
+		!gs.game_over
 	if morgan_chattering {
 		tick_morgan_chatter_sfx(&gs.audio, dt)
 	} else {
@@ -535,7 +569,8 @@ update :: proc() {
 	   gs.boss.boss.kind == .Ancient_Guardian &&
 	   !gs.paused &&
 	   !gs.victory &&
-	   !gs.transitioning {
+	   !gs.transitioning &&
+	   !gs.game_over {
 		if !gs.boss.boss.intro_played {
 			play_guardian_intro_sfx(&gs.audio)
 			gs.boss.boss.intro_played = true
@@ -576,6 +611,9 @@ update :: proc() {
 				gs.rerolls_remaining,
 			)
 		}
+	}
+	if gs.game_over {
+		draw_game_over(gs.game_over_t)
 	}
 	draw_mission_title(&gs.mission_title)
 	if gs.dialogue.active {
@@ -645,31 +683,6 @@ parent_window_size_changed :: proc(w, h: int) {
 		rl.SetWindowSize(i32(w), i32(h))
 	}
 	update_screen_scale()
-}
-
-set_web_mouse_pos :: proc(x, y: int) {
-	gs.mouse_x = x
-	gs.mouse_y = y
-}
-
-set_web_mouse_down :: proc(down: bool) {
-	gs.mouse_down = down
-}
-
-get_mouse_game_pos :: proc() -> rl.Vector2 {
-	wx, wy: f32
-	when ODIN_OS == .JS {
-		wx = f32(gs.mouse_x)
-		wy = f32(gs.mouse_y)
-	} else {
-		m := rl.GetMousePosition()
-		wx = m.x
-		wy = m.y
-	}
-	if gs.scale <= 0 {
-		return {0, 0}
-	}
-	return rl.Vector2{(wx - gs.offset_x) / gs.scale, (wy - gs.offset_y) / gs.scale}
 }
 
 @(private = "file")
@@ -762,6 +775,7 @@ clear_world :: proc() {
 	for i in 0 ..< MAX_BULLETS {
 		gs.bullets.bullets[i].active = false
 	}
+	gs.bullets.fire_suppress_timer = 0
 	for i in 0 ..< MAX_BEAMS {
 		gs.beams.beams[i].active = false
 	}
@@ -779,6 +793,71 @@ clear_world :: proc() {
 	gs.player.charging = false
 	gs.player.charge_beam_idx = -1
 	gs.player.charge = 0
+}
+
+// Locks into the death overlay state. Stops continuous SFX and music so the
+// game-over stinger plays into clean silence, and freezes gameplay updates
+// behind the `gs.game_over` gate in update().
+@(private = "file")
+enter_game_over :: proc() {
+	gs.game_over = true
+	gs.game_over_t = 0
+	gs.dialogue.active = false
+	gs.mission_title.active = false
+	gs.player.charging = false
+	stop_rapid_fire_sfx(&gs.audio)
+	stop_charging_beam_sfx(&gs.audio)
+	stop_golgotha_bullet_hell_sfx(&gs.audio)
+	stop_morgan_chatter_sfx(&gs.audio)
+	set_music_lpf_enabled(&gs.audio, false)
+	rl.StopMusicStream(gs.audio.music[gs.audio.current_track])
+	play_game_over_sfx(&gs.audio)
+}
+
+// "GAME OVER" title eases in from above the screen using raylib's elastic-out
+// curve — distinct from the smoothstep used by every other fade in the game so
+// the death feels punctuated rather than just another transition.
+draw_game_over :: proc(t: f32) {
+	rl.DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, rl.Color{0, 0, 0, GAME_OVER_OVERLAY_ALPHA})
+
+	anim_t := t
+	if anim_t > GAME_OVER_ANIM_DUR {
+		anim_t = GAME_OVER_ANIM_DUR
+	}
+	title_y := rl.EaseElasticOut(
+		anim_t,
+		GAME_OVER_TITLE_DROP_FROM_Y,
+		f32(GAME_OVER_TITLE_Y) - GAME_OVER_TITLE_DROP_FROM_Y,
+		GAME_OVER_ANIM_DUR,
+	)
+
+	title := cstring("GAME OVER")
+	title_w := rl.MeasureText(title, GAME_OVER_TITLE_FONT_SIZE)
+	title_x: i32 = (SCREEN_WIDTH - title_w) / 2
+	ty := i32(title_y)
+	rl.DrawText(title, title_x + 2, ty + 2, GAME_OVER_TITLE_FONT_SIZE, rl.BLACK)
+	rl.DrawText(title, title_x, ty, GAME_OVER_TITLE_FONT_SIZE, rl.Color{220, 60, 60, 255})
+
+	if t < GAME_OVER_INPUT_DELAY {
+		return
+	}
+
+	pre := cstring("PRESS")
+	tail := cstring("TO RETURN TO MAIN MENU")
+	pre_w := rl.MeasureText(pre, GAME_OVER_PROMPT_FONT_SIZE)
+	tail_w := rl.MeasureText(tail, GAME_OVER_PROMPT_FONT_SIZE)
+	icon_w := input_hint_width(.Confirm, HINT_ICON_SIZE)
+	total_w := pre_w + HINT_TEXT_GAP + icon_w + HINT_TEXT_GAP + tail_w
+	prompt_x: i32 = (SCREEN_WIDTH - total_w) / 2
+	prompt_y: i32 = GAME_OVER_PROMPT_Y
+	icon_y := prompt_y + (GAME_OVER_PROMPT_FONT_SIZE - HINT_ICON_SIZE) / 2
+	rl.DrawText(pre, prompt_x + 1, prompt_y + 1, GAME_OVER_PROMPT_FONT_SIZE, rl.BLACK)
+	rl.DrawText(pre, prompt_x, prompt_y, GAME_OVER_PROMPT_FONT_SIZE, rl.WHITE)
+	icon_x := prompt_x + pre_w + HINT_TEXT_GAP
+	draw_input_hint(.Confirm, icon_x, icon_y, HINT_ICON_SIZE)
+	tail_x := icon_x + icon_w + HINT_TEXT_GAP
+	rl.DrawText(tail, tail_x + 1, prompt_y + 1, GAME_OVER_PROMPT_FONT_SIZE, rl.BLACK)
+	rl.DrawText(tail, tail_x, prompt_y, GAME_OVER_PROMPT_FONT_SIZE, rl.WHITE)
 }
 
 draw_run_timer :: proc(run_time: f32) {

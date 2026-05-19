@@ -74,7 +74,7 @@ input_move :: proc() -> rl.Vector2 {
 }
 
 input_attack_pressed :: proc() -> bool {
-	if rl.IsMouseButtonPressed(.LEFT) {
+	if rl.IsKeyPressed(.Z) {
 		return true
 	}
 	if rl.IsGamepadAvailable(GAMEPAD_ID) {
@@ -86,7 +86,7 @@ input_attack_pressed :: proc() -> bool {
 }
 
 input_attack_held :: proc() -> bool {
-	if rl.IsMouseButtonDown(.LEFT) {
+	if rl.IsKeyDown(.Z) {
 		return true
 	}
 	if rl.IsGamepadAvailable(GAMEPAD_ID) {
@@ -110,7 +110,7 @@ input_slow_time_held :: proc() -> bool {
 }
 
 input_shrink_bomb_pressed :: proc() -> bool {
-	if rl.IsKeyPressed(.F) {
+	if rl.IsKeyPressed(.C) {
 		return true
 	}
 	if rl.IsGamepadAvailable(GAMEPAD_ID) {
@@ -169,7 +169,7 @@ input_menu_step_x :: proc() -> int {
 }
 
 input_attack_released :: proc() -> bool {
-	if rl.IsMouseButtonReleased(.LEFT) {
+	if rl.IsKeyReleased(.Z) {
 		return true
 	}
 	if rl.IsGamepadAvailable(GAMEPAD_ID) {
@@ -232,9 +232,11 @@ input_track_device :: proc() {
 		.DOWN,
 		.LEFT,
 		.RIGHT,
-		.SPACE,
+		.Z,
+		.X,
+		.C,
 		.LEFT_SHIFT,
-		.F,
+		.R,
 		.ENTER,
 		.ESCAPE,
 	}
@@ -243,9 +245,6 @@ input_track_device :: proc() {
 			last_device = .Keyboard
 			return
 		}
-	}
-	if rl.IsMouseButtonDown(.LEFT) {
-		last_device = .Keyboard
 	}
 }
 
@@ -328,13 +327,13 @@ Input_Hint :: enum {
 // unaffected.
 @(private = "file")
 hint_textures: struct {
-	// Keyboard / mouse
+	// Keyboard
 	kb_arrows:        rl.Texture2D,
 	kb_arrows_horiz:  rl.Texture2D,
-	mouse_left:       rl.Texture2D,
-	kb_space:         rl.Texture2D,
+	kb_z:             rl.Texture2D,
+	kb_x:             rl.Texture2D,
+	kb_c:             rl.Texture2D,
 	kb_shift:         rl.Texture2D,
-	kb_f:             rl.Texture2D,
 	kb_r:             rl.Texture2D,
 	kb_escape:        rl.Texture2D,
 	kb_enter:         rl.Texture2D,
@@ -361,10 +360,10 @@ load_hint_texture :: proc(path: cstring) -> rl.Texture2D {
 init_input_hints :: proc() {
 	hint_textures.kb_arrows = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_arrows.png")
 	hint_textures.kb_arrows_horiz = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_arrows_horizontal.png")
-	hint_textures.mouse_left = load_hint_texture("assets/tiles/DefaultKeeb/mouse_left.png")
-	hint_textures.kb_space = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_space.png")
+	hint_textures.kb_z = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_z.png")
+	hint_textures.kb_x = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_x.png")
+	hint_textures.kb_c = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_c.png")
 	hint_textures.kb_shift = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_shift.png")
-	hint_textures.kb_f = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_f.png")
 	hint_textures.kb_r = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_r.png")
 	hint_textures.kb_escape = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_escape.png")
 	hint_textures.kb_enter = load_hint_texture("assets/tiles/DefaultKeeb/keyboard_enter.png")
@@ -384,10 +383,10 @@ init_input_hints :: proc() {
 unload_input_hints :: proc() {
 	rl.UnloadTexture(hint_textures.kb_arrows)
 	rl.UnloadTexture(hint_textures.kb_arrows_horiz)
-	rl.UnloadTexture(hint_textures.mouse_left)
-	rl.UnloadTexture(hint_textures.kb_space)
+	rl.UnloadTexture(hint_textures.kb_z)
+	rl.UnloadTexture(hint_textures.kb_x)
+	rl.UnloadTexture(hint_textures.kb_c)
 	rl.UnloadTexture(hint_textures.kb_shift)
-	rl.UnloadTexture(hint_textures.kb_f)
 	rl.UnloadTexture(hint_textures.kb_r)
 	rl.UnloadTexture(hint_textures.kb_escape)
 	rl.UnloadTexture(hint_textures.kb_enter)
@@ -422,16 +421,16 @@ hint_icons :: proc(kind: Input_Hint, out: ^[2]rl.Texture2D) -> int {
 		out[0] = on_gamepad ? hint_textures.gp_dpad_horiz : hint_textures.kb_arrows_horiz
 		return 1
 	case .Attack:
-		out[0] = on_gamepad ? hint_textures.gp_rt : hint_textures.mouse_left
+		out[0] = on_gamepad ? hint_textures.gp_rt : hint_textures.kb_z
 		return 1
 	case .Dash:
-		out[0] = on_gamepad ? hint_textures.gp_button_b : hint_textures.kb_space
+		out[0] = on_gamepad ? hint_textures.gp_button_b : hint_textures.kb_x
 		return 1
 	case .Slow_Time:
 		out[0] = on_gamepad ? hint_textures.gp_lt : hint_textures.kb_shift
 		return 1
 	case .Shrink_Bomb:
-		out[0] = on_gamepad ? hint_textures.gp_button_x : hint_textures.kb_f
+		out[0] = on_gamepad ? hint_textures.gp_button_x : hint_textures.kb_c
 		return 1
 	case .Pause:
 		out[0] = on_gamepad ? hint_textures.gp_button_menu : hint_textures.kb_escape
@@ -522,52 +521,22 @@ flush_input_hints :: proc(scale, offset_x, offset_y: f32) {
 }
 
 // Returns whether dash was triggered this frame and the normalized direction.
-// Keyboard (SPACE): direction is from player toward mouse cursor.
-// Gamepad (B / RIGHT_FACE_RIGHT): direction is the left stick axis (dpad as fallback).
-// `dir` is zero-length when the player gave no aim — caller should skip dashing then.
-input_dash :: proc(player_center, mouse_game_pos: rl.Vector2) -> (pressed: bool, dir: rl.Vector2) {
+// Dash always aims along the player's current movement direction (keyboard X or
+// gamepad RIGHT_FACE_RIGHT). `move_dir` is whatever input_move() returned this
+// frame; if the player is idle, dir is zero-length and the caller should skip.
+input_dash :: proc(move_dir: rl.Vector2) -> (pressed: bool, dir: rl.Vector2) {
 	gpad_pressed := false
 	if rl.IsGamepadAvailable(GAMEPAD_ID) {
 		if rl.IsGamepadButtonPressed(GAMEPAD_ID, .RIGHT_FACE_RIGHT) {
 			gpad_pressed = true
 		}
 	}
-	kb_pressed := rl.IsKeyPressed(.SPACE)
+	kb_pressed := rl.IsKeyPressed(.X)
 	if !gpad_pressed && !kb_pressed {
 		return false, {0, 0}
 	}
-
-	if gpad_pressed {
-		ax := rl.GetGamepadAxisMovement(GAMEPAD_ID, .LEFT_X)
-		ay := rl.GetGamepadAxisMovement(GAMEPAD_ID, .LEFT_Y)
-		d := rl.Vector2{0, 0}
-		if abs(ax) > STICK_DEADZONE {
-			d.x = ax
-		}
-		if abs(ay) > STICK_DEADZONE {
-			d.y = ay
-		}
-		if rl.IsGamepadButtonDown(GAMEPAD_ID, .LEFT_FACE_UP) {
-			d.y -= 1
-		}
-		if rl.IsGamepadButtonDown(GAMEPAD_ID, .LEFT_FACE_DOWN) {
-			d.y += 1
-		}
-		if rl.IsGamepadButtonDown(GAMEPAD_ID, .LEFT_FACE_LEFT) {
-			d.x -= 1
-		}
-		if rl.IsGamepadButtonDown(GAMEPAD_ID, .LEFT_FACE_RIGHT) {
-			d.x += 1
-		}
-		if rl.Vector2Length(d) < 0.001 {
-			return true, {0, 0}
-		}
-		return true, rl.Vector2Normalize(d)
-	}
-
-	delta := mouse_game_pos - player_center
-	if rl.Vector2Length(delta) < 0.001 {
+	if rl.Vector2Length(move_dir) < 0.001 {
 		return true, {0, 0}
 	}
-	return true, rl.Vector2Normalize(delta)
+	return true, rl.Vector2Normalize(move_dir)
 }

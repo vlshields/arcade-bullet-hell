@@ -13,7 +13,7 @@ import "core:strings"
 // #region Audio
 
 // One stream per track. Mapping:
-//   Main_Menu       — main_menu.ogg, the menu/options/controls screens
+//   Main_Menu       — themesong1, the menu/options/controls screens
 //   Gameplay        — themesong2, levels 1 and 4
 //   Levels_2_3      — themesong3, levels 2 and 3
 //   Guardian        — themesong4, level 5 boss fight
@@ -27,7 +27,7 @@ Music_Track :: enum {
 }
 
 MUSIC_TRACK_PATHS := [Music_Track]cstring {
-	.Main_Menu     = "assets/audio/soundtrack/main_menu.ogg",
+	.Main_Menu     = "assets/audio/soundtrack/themesong1.ogg",
 	.Gameplay      = "assets/audio/soundtrack/themesong2.ogg",
 	.Levels_2_3    = "assets/audio/soundtrack/themesong3_lvl2-lvl3.ogg",
 	.Guardian      = "assets/audio/soundtrack/themesong4_guardian.ogg",
@@ -45,6 +45,7 @@ Audio :: struct {
 	sfx_dash:                 rl.Sound,
 	sfx_enemy_dies:           rl.Sound,
 	sfx_enemy_takes_damage:   rl.Sound,
+	sfx_game_over:            rl.Sound,
 	sfx_golgotha_bullet_hell: rl.Sound,
 	sfx_golgotha_scream:      rl.Sound,
 	sfx_grunts_attack:        rl.Sound,
@@ -59,6 +60,9 @@ Audio :: struct {
 	sfx_shrink_bullets:       rl.Sound,
 	sfx_sneak_teleport:       rl.Sound,
 	sfx_takes_damage:         rl.Sound,
+	sfx_ui_navigation:        rl.Sound,
+	sfx_ui_select:            rl.Sound,
+	sfx_ui_startgame:         rl.Sound,
 	sfx_weird_guys_die:       rl.Sound,
 }
 
@@ -81,6 +85,7 @@ init_audio :: proc(a: ^Audio) {
 	a.sfx_dash = rl.LoadSound("assets/audio/sfx/player_dash.wav")
 	a.sfx_enemy_dies = rl.LoadSound("assets/audio/sfx/enemies_die_grunts_sneaks_cyclops_pillars_bosses.wav")
 	a.sfx_enemy_takes_damage = rl.LoadSound("assets/audio/sfx/enemies_take_damage.wav")
+	a.sfx_game_over = rl.LoadSound("assets/audio/sfx/game_over.wav")
 	a.sfx_golgotha_bullet_hell = rl.LoadSound("assets/audio/golgotha_bullet_hell.wav")
 	a.sfx_golgotha_scream = rl.LoadSound("assets/audio/sfx/golgotha_scream.wav")
 	a.sfx_grunts_attack = rl.LoadSound("assets/audio/sfx/grunts_attack.wav")
@@ -94,6 +99,9 @@ init_audio :: proc(a: ^Audio) {
 	a.sfx_shrink_bullets = rl.LoadSound("assets/audio/sfx/player_shrink_bullets.wav")
 	a.sfx_sneak_teleport = rl.LoadSound("assets/audio/sfx/sneaks_teleport_or_spawn.wav")
 	a.sfx_takes_damage = rl.LoadSound("assets/audio/sfx/player_takes_damage.wav")
+	a.sfx_ui_navigation = rl.LoadSound("assets/audio/sfx/ui_navigation.wav")
+	a.sfx_ui_select = rl.LoadSound("assets/audio/sfx/ui_select.wav")
+	a.sfx_ui_startgame = rl.LoadSound("assets/audio/sfx/ui_startgame.wav")
 	a.sfx_weird_guys_die = rl.LoadSound("assets/audio/sfx/weird_guys_die.wav")
 
 	apply_sfx_volume(a)
@@ -190,6 +198,7 @@ unload_audio :: proc(a: ^Audio) {
 	rl.UnloadSound(a.sfx_dash)
 	rl.UnloadSound(a.sfx_enemy_dies)
 	rl.UnloadSound(a.sfx_enemy_takes_damage)
+	rl.UnloadSound(a.sfx_game_over)
 	rl.UnloadSound(a.sfx_golgotha_bullet_hell)
 	rl.UnloadSound(a.sfx_golgotha_scream)
 	rl.UnloadSound(a.sfx_grunts_attack)
@@ -203,6 +212,9 @@ unload_audio :: proc(a: ^Audio) {
 	rl.UnloadSound(a.sfx_shrink_bullets)
 	rl.UnloadSound(a.sfx_sneak_teleport)
 	rl.UnloadSound(a.sfx_takes_damage)
+	rl.UnloadSound(a.sfx_ui_navigation)
+	rl.UnloadSound(a.sfx_ui_select)
+	rl.UnloadSound(a.sfx_ui_startgame)
 	rl.UnloadSound(a.sfx_weird_guys_die)
 	rl.CloseAudioDevice()
 }
@@ -227,6 +239,7 @@ apply_sfx_volume :: proc(a: ^Audio) {
 	rl.SetSoundVolume(a.sfx_dash, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_enemy_dies, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_enemy_takes_damage, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_game_over, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_golgotha_bullet_hell, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_golgotha_scream, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_grunts_attack, a.sfx_volume)
@@ -240,6 +253,9 @@ apply_sfx_volume :: proc(a: ^Audio) {
 	rl.SetSoundVolume(a.sfx_shrink_bullets, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_sneak_teleport, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_takes_damage, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_ui_navigation, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_ui_select, a.sfx_volume)
+	rl.SetSoundVolume(a.sfx_ui_startgame, a.sfx_volume)
 	rl.SetSoundVolume(a.sfx_weird_guys_die, a.sfx_volume)
 }
 
@@ -249,7 +265,13 @@ play_charged_beam_sfx :: proc(a: ^Audio)  {rl.PlaySound(a.sfx_charged_beam)}
 play_reflect_sfx :: proc(a: ^Audio)       {rl.PlaySound(a.sfx_reflects_bullet)}
 play_shrink_bomb_sfx :: proc(a: ^Audio)   {rl.PlaySound(a.sfx_shrink_bullets)}
 play_player_damage_sfx :: proc(a: ^Audio) {rl.PlaySound(a.sfx_takes_damage)}
+play_game_over_sfx :: proc(a: ^Audio)     {rl.PlaySound(a.sfx_game_over)}
 play_golgotha_scream_sfx :: proc(a: ^Audio) {rl.PlaySound(a.sfx_golgotha_scream)}
+
+play_ui_navigate_sfx :: proc(a: ^Audio)  {rl.PlaySound(a.sfx_ui_navigation)}
+play_ui_confirm_sfx :: proc(a: ^Audio)   {rl.PlaySound(a.sfx_ui_select)}
+play_ui_startgame_sfx :: proc(a: ^Audio) {rl.PlaySound(a.sfx_ui_startgame)}
+play_ui_back_sfx :: proc(a: ^Audio)      {rl.PlaySound(a.sfx_takes_damage)}
 
 // Per-frame enemy event cues. PlaySound restarts the clip on every call, so
 // dozens of simultaneous grunts/cyclops would clip into a buzz — the
@@ -375,16 +397,19 @@ Background :: struct {
 	wave:        Wave_Shader,
 	seconds:     f32,
 	shader_mode: bool,
+	tint:        Bg_Tint_Shader,
 }
 
 init_background :: proc(bg: ^Background) {
 	bg.speeds = {10, 25, 60}
 	bg.wave = load_wave_shader()
+	bg.tint = load_bg_tint_shader()
 	load_bg_textures(bg, 1)
 }
 
 unload_background :: proc(bg: ^Background) {
 	unload_wave_shader(&bg.wave)
+	unload_bg_tint_shader(&bg.tint)
 	for i in 0 ..< BG_LAYERS {
 		rl.UnloadTexture(bg.textures[i])
 	}
@@ -478,6 +503,7 @@ draw_background :: proc(bg: ^Background) {
 		rl.EndShaderMode()
 		return
 	}
+	rl.BeginShaderMode(bg.tint.shader)
 	for i in 0 ..< BG_LAYERS {
 		tex := bg.textures[i]
 		if tex.height <= 0 {
@@ -489,6 +515,7 @@ draw_background :: proc(bg: ^Background) {
 			rl.DrawTexture(tex, 0, i32(cy), rl.WHITE)
 		}
 	}
+	rl.EndShaderMode()
 }
 
 
@@ -523,6 +550,10 @@ mission_strings :: proc(level: int) -> (title: cstring, sub: cstring, ok: bool) 
 	switch level {
 	case 1:
 		return cstring("MISSION I"), cstring("RAID GOLGATHA'S HEADQUARTERS"), true
+	case 2:
+		return cstring("MISSION II"), cstring("LOCATE MORGAN'S HIDEOUT"), true
+	case 4:
+		return cstring("MISSION IV"), cstring("FLANK THE SPACE STATION"), true
 	}
 	return "", "", false
 }
@@ -547,17 +578,34 @@ draw_mission_title :: proc(mt: ^Mission_Title) {
 		return
 	}
 
+	title_off, sub_off := mission_title_slide_offsets(mt.timer)
+
 	tw := rl.MeasureText(mt.title, MISSION_TITLE_FONT_SIZE)
-	tx := (i32(SCREEN_WIDTH) - tw) / 2
+	tx := (i32(SCREEN_WIDTH) - tw) / 2 + i32(title_off)
 	ty: i32 = MISSION_TITLE_Y
 	rl.DrawText(mt.title, tx + 2, ty + 2, MISSION_TITLE_FONT_SIZE, rl.Color{0, 0, 0, a})
 	rl.DrawText(mt.title, tx, ty, MISSION_TITLE_FONT_SIZE, rl.Color{255, 220, 80, a})
 
 	sw := rl.MeasureText(mt.subtitle, MISSION_SUBTITLE_FONT_SIZE)
-	sx := (i32(SCREEN_WIDTH) - sw) / 2
+	sx := (i32(SCREEN_WIDTH) - sw) / 2 + i32(sub_off)
 	sy: i32 = ty + MISSION_TITLE_FONT_SIZE + MISSION_SUBTITLE_GAP
 	rl.DrawText(mt.subtitle, sx + 1, sy + 1, MISSION_SUBTITLE_FONT_SIZE, rl.Color{0, 0, 0, a})
 	rl.DrawText(mt.subtitle, sx, sy, MISSION_SUBTITLE_FONT_SIZE, rl.Color{220, 220, 240, a})
+}
+
+// Title slides in from the left with EaseBackOut so it overshoots and settles;
+// subtitle slides in from the right with EaseCubicOut for a quieter glide. Both
+// hold at center for the hold + fade-out phases so the existing alpha curve
+// owns the exit.
+@(private = "file")
+mission_title_slide_offsets :: proc(t: f32) -> (title_off, sub_off: f32) {
+	fade_in := f32(MISSION_TITLE_FADE_IN)
+	if t >= fade_in {
+		return 0, 0
+	}
+	title_off = rl.EaseBackOut(t, -MISSION_TITLE_SLIDE_DIST, MISSION_TITLE_SLIDE_DIST, fade_in)
+	sub_off = rl.EaseCubicOut(t, MISSION_TITLE_SLIDE_DIST, -MISSION_TITLE_SLIDE_DIST, fade_in)
+	return
 }
 
 @(private = "file")
@@ -996,20 +1044,25 @@ update_main_menu :: proc(
 		step := input_menu_step_y()
 		if step != 0 {
 			mm.cursor = (mm.cursor + step + item_count) % item_count
+			play_ui_navigate_sfx(audio)
 		}
 		if input_confirm_pressed() {
 			switch mm.cursor {
 			case 0:
 				begin_game^ = true
+				play_ui_startgame_sfx(audio)
 			case 1:
 				mm.screen = .Options
 				mm.cursor = 0
+				play_ui_confirm_sfx(audio)
 			case 2:
 				mm.screen = .Controls
 				mm.cursor = 0
+				play_ui_confirm_sfx(audio)
 			case 3:
 				when ODIN_OS != .JS {
 					quit_app^ = true
+					play_ui_confirm_sfx(audio)
 				}
 			}
 		}
@@ -1018,31 +1071,37 @@ update_main_menu :: proc(
 		if input_menu_back_pressed() {
 			mm.screen = .Main
 			mm.cursor = 1
+			play_ui_back_sfx(audio)
 			return
 		}
 		item_count := 3
 		step := input_menu_step_y()
 		if step != 0 {
 			mm.cursor = (mm.cursor + step + item_count) % item_count
+			play_ui_navigate_sfx(audio)
 		}
 		h := input_menu_step_x()
 		if h != 0 {
 			switch mm.cursor {
 			case 0:
 				set_music_volume(audio, audio.music_volume + f32(h) * PAUSE_VOLUME_STEP)
+				play_ui_navigate_sfx(audio)
 			case 1:
 				set_sfx_volume(audio, audio.sfx_volume + f32(h) * PAUSE_VOLUME_STEP)
+				play_ui_navigate_sfx(audio)
 			}
 		}
 		if input_confirm_pressed() && mm.cursor == 2 {
 			mm.screen = .Main
 			mm.cursor = 1
+			play_ui_back_sfx(audio)
 		}
 
 	case .Controls:
 		if input_menu_back_pressed() || input_confirm_pressed() {
 			mm.screen = .Main
 			mm.cursor = 2
+			play_ui_back_sfx(audio)
 		}
 	}
 }
@@ -1101,26 +1160,32 @@ update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio:
 	case .Main:
 		if input_pause_toggle_pressed() {
 			paused^ = false
+			play_ui_back_sfx(audio)
 			return
 		}
 		item_count := 4
 		step := input_menu_step_y()
 		if step != 0 {
 			pm.cursor = (pm.cursor + step + item_count) % item_count
+			play_ui_navigate_sfx(audio)
 		}
 		if input_confirm_pressed() {
 			switch pm.cursor {
 			case 0:
 				paused^ = false
+				play_ui_confirm_sfx(audio)
 			case 1:
 				pm.screen = .Options
 				pm.cursor = 0
+				play_ui_confirm_sfx(audio)
 			case 2:
 				pm.screen = .Controls
 				pm.cursor = 0
+				play_ui_confirm_sfx(audio)
 			case 3:
 				quit_to_menu^ = true
 				paused^ = false
+				play_ui_confirm_sfx(audio)
 			}
 		}
 
@@ -1128,31 +1193,38 @@ update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio:
 		if input_menu_back_pressed() {
 			pm.screen = .Main
 			pm.cursor = 1
+			play_ui_back_sfx(audio)
 			return
 		}
 		item_count := 4
 		step := input_menu_step_y()
 		if step != 0 {
 			pm.cursor = (pm.cursor + step + item_count) % item_count
+			play_ui_navigate_sfx(audio)
 		}
 		h := input_menu_step_x()
 		if h != 0 {
 			switch pm.cursor {
 			case 0:
 				set_music_volume(audio, audio.music_volume + f32(h) * PAUSE_VOLUME_STEP)
+				play_ui_navigate_sfx(audio)
 			case 1:
 				set_sfx_volume(audio, audio.sfx_volume + f32(h) * PAUSE_VOLUME_STEP)
+				play_ui_navigate_sfx(audio)
 			case 2:
 				show_timer^ = !show_timer^
+				play_ui_navigate_sfx(audio)
 			}
 		}
 		if input_confirm_pressed() {
 			switch pm.cursor {
 			case 2:
 				show_timer^ = !show_timer^
+				play_ui_confirm_sfx(audio)
 			case 3:
 				pm.screen = .Main
 				pm.cursor = 1
+				play_ui_back_sfx(audio)
 			}
 		}
 
@@ -1160,6 +1232,7 @@ update_pause :: proc(pm: ^Pause_Menu, paused: ^bool, quit_to_menu: ^bool, audio:
 		if input_menu_back_pressed() || input_confirm_pressed() {
 			pm.screen = .Main
 			pm.cursor = 2
+			play_ui_back_sfx(audio)
 		}
 	}
 }

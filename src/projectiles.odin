@@ -402,9 +402,10 @@ Bullet :: struct {
 }
 
 Bullet_Pool :: struct {
-	bullets:     [MAX_BULLETS]Bullet,
-	glow_shader: rl.Shader,
-	glow_tex:    rl.Texture2D,
+	bullets:              [MAX_BULLETS]Bullet,
+	glow_shader:          rl.Shader,
+	glow_tex:             rl.Texture2D,
+	fire_suppress_timer:  f32,
 }
 
 init_bullets :: proc(pool: ^Bullet_Pool) {
@@ -425,6 +426,9 @@ spawn_bullet :: proc(
 	source_kind: Bullet_Source = .None,
 	source_index: int = 0,
 ) {
+	if kind == .Enemy && pool.fire_suppress_timer > 0 {
+		return
+	}
 	life: f32 = BULLET_LIFE
 	if kind == .Rapid_Fire {
 		life = RAPID_FIRE_LIFE
@@ -447,6 +451,9 @@ spawn_bullet :: proc(
 }
 
 spawn_energy_orb :: proc(pool: ^Bullet_Pool, pos, vel: rl.Vector2) {
+	if pool.fire_suppress_timer > 0 {
+		return
+	}
 	for i in 0 ..< MAX_BULLETS {
 		if !pool.bullets[i].active {
 			pool.bullets[i] = Bullet {
@@ -555,6 +562,9 @@ update_bullets :: proc(
 	dt: f32,
 	world_dt: f32,
 ) {
+	if pool.fire_suppress_timer > 0 {
+		pool.fire_suppress_timer = max(0, pool.fire_suppress_timer - world_dt)
+	}
 	steer_k := f32(1) - math.exp(-REFLECT_HOMING_RATE * dt)
 	for i in 0 ..< MAX_BULLETS {
 		b := &pool.bullets[i]
@@ -673,6 +683,7 @@ shrink_all_enemy_bullets :: proc(pool: ^Bullet_Pool) {
 		b.shrinking = true
 		b.shrink_t = 0
 	}
+	pool.fire_suppress_timer = SHRINK_BOMB_FIRE_SUPPRESS
 }
 
 collide_bullets_player :: proc(pool: ^Bullet_Pool, player: ^Player, audio: ^Audio) {

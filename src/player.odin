@@ -223,11 +223,9 @@ update_player :: proc(p: ^Player, missiles: ^Missile_Pool, audio: ^Audio, dt: f3
 		}
 	}
 
-	pcx := p.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
-	pcy := p.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
 	dash_cost := dash_stamina_cost(p)
 	if p.dash_timer <= 0 && p.dash_cooldown <= 0 && p.stamina >= dash_cost {
-		pressed, dir := input_dash({pcx, pcy}, get_mouse_game_pos())
+		pressed, dir := input_dash(move)
 		if pressed && rl.Vector2Length(dir) > 0.001 {
 			p.dash_timer = PLAYER_DASH_DURATION
 			p.dash_cooldown = PLAYER_DASH_COOLDOWN
@@ -240,6 +238,8 @@ update_player :: proc(p: ^Player, missiles: ^Missile_Pool, audio: ^Audio, dt: f3
 				if .Lucky_Shot in p.upgrades {
 					count += 1
 				}
+				pcx := p.pos.x + f32(PLAYER_FRAME_W * PLAYER_DRAW_SCALE) * 0.5
+				pcy := p.pos.y + f32(PLAYER_FRAME_H * PLAYER_DRAW_SCALE) * 0.5
 				launch_dash_missiles(missiles, {pcx, pcy}, dir, count)
 			}
 			play_dash_sfx(audio)

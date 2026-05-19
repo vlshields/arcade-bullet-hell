@@ -112,27 +112,6 @@
 
 				send_resize();
 
-				// Track mouse position and buttons on the canvas
-				var gameCanvas = document.getElementById('canvas');
-				gameCanvas.addEventListener('mousemove', function(ev) {
-					var rect = gameCanvas.getBoundingClientRect();
-					var scaleX = gameCanvas.width / rect.width;
-					var scaleY = gameCanvas.height / rect.height;
-					e.web_set_mouse_pos(
-						Math.round((ev.clientX - rect.left) * scaleX),
-						Math.round((ev.clientY - rect.top) * scaleY)
-					);
-				});
-				gameCanvas.addEventListener('mousedown', function(ev) {
-					if (ev.button === 0) { e.web_set_mouse_down(1); }
-				});
-				gameCanvas.addEventListener('mouseup', function(ev) {
-					if (ev.button === 0) { e.web_set_mouse_down(0); }
-				});
-				window.addEventListener('mouseup', function(ev) {
-					if (ev.button === 0) { e.web_set_mouse_down(0); }
-				});
-
 				function do_main_update() {
 					e.main_update();
 					window.requestAnimationFrame(do_main_update);
